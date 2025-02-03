@@ -27,3 +27,4 @@
 /home/ken/Documents/p/timeline/obj/Debug/net9.0/timeline.pdb
 /home/ken/Documents/p/timeline/obj/Debug/net9.0/timeline.genruntimeconfig.cache
 /home/ken/Documents/p/timeline/obj/Debug/net9.0/ref/timeline.dll
+/home/ken/Documents/p/timeline/obj/Debug/net9.0/timeline.sourcelink.json

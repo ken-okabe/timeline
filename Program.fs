@@ -7,8 +7,8 @@ let log = // 'a -> unit
 log "Hello from F#"
 
 //--------------------------------------------
-let timelineRef: Timeline<string | null>
-    = Timeline null
+let timelineRef: Timeline<string>
+    = Timeline Null
 
 timelineRef
     |> TL.map log
@@ -17,19 +17,50 @@ timelineRef
 timelineRef |> TL.next "Hello"
 timelineRef |> TL.next "World!"
 timelineRef |> TL.next "F#"
-timelineRef |> TL.next null
+timelineRef |> TL.next Null
 
 //--------------------------------------------
 
-//ERROR-> let timelineInt: Timeline<int | null>
-let timelineIntObj: Timeline<obj | null>
-     = Timeline null
+//ERROR-> let timelineInt: Timeline<int>
+
+type intObj = {
+    value: int
+}
+let timelineIntObj: Timeline<intObj>
+     = Timeline Null
 
 timelineIntObj
-    |> TL.map log
-    |> ignore
+|> TL.map(fun (value) ->
+        if (isNullT value) then log null else
 
-timelineIntObj |> TL.next 1
-timelineIntObj |> TL.next 2
-timelineIntObj |> TL.next 3
-timelineIntObj |> TL.next null
+        log value
+
+    )
+|> ignore
+
+timelineIntObj |> TL.next {value = 1}
+timelineIntObj |> TL.next {value = 2}
+timelineIntObj |> TL.next {value = 3}
+timelineIntObj |> TL.next Null
+
+//--------------------------------------------
+
+type obj = {
+    cmd: string
+    msg: string
+}
+
+let timelineObj: Timeline<obj>
+     = Timeline Null
+
+timelineObj
+|> TL.map(fun (value) ->
+        if (isNullT value) then () else //do nothing on Null
+
+        log value
+
+    )
+|> ignore
+
+timelineObj |> TL.next {cmd = "text"; msg = "Hello"}
+timelineObj |> TL.next {cmd = "text"; msg = "Bye"}
