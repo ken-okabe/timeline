@@ -4,9 +4,7 @@ open Timeline
 let log = // 'a -> unit
     fun a -> printfn "%A" a
 
-log "Hello from F#"
-
-//--------------------------------------------
+log "--------------------------------------------"
 let timelineRef: Timeline<string>
     = Timeline Null
 
@@ -19,7 +17,7 @@ timelineRef |> TL.next "World!"
 timelineRef |> TL.next "F#"
 timelineRef |> TL.next Null
 
-//--------------------------------------------
+log "--------------------------------------------"
 
 //ERROR-> let timelineInt: Timeline<int>
 
@@ -30,10 +28,10 @@ let timelineIntObj: Timeline<intObj>
      = Timeline Null
 
 timelineIntObj
-|> TL.map(fun (value) ->
-        if (isNullT value) then log null else
-
-        log value
+|> TL.map(fun value ->
+        if (isNullT value)
+        then log null
+        else log value
 
     )
 |> ignore
@@ -43,7 +41,7 @@ timelineIntObj |> TL.next {value = 2}
 timelineIntObj |> TL.next {value = 3}
 timelineIntObj |> TL.next Null
 
-//--------------------------------------------
+log "--------------------------------------------"
 
 type obj = {
     cmd: string
@@ -54,7 +52,7 @@ let timelineObj: Timeline<obj>
      = Timeline Null
 
 timelineObj
-|> TL.map(fun (value) ->
+|> TL.map(fun value ->
         if (isNullT value) then () else //do nothing on Null
 
         log value
