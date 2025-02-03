@@ -16,7 +16,7 @@ let isNullT (value: 'a when 'a:not struct) =
     if obj.ReferenceEquals(value, null)
     then true
     else false
- 
+
 module TL =
     let last =
         fun timeline ->
