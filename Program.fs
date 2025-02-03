@@ -19,8 +19,6 @@ timelineRef |> TL.next Null
 
 log "--------------------------------------------"
 
-//ERROR-> let timelineInt: Timeline<int>
-
 type intObj = {
     value: int
 }
