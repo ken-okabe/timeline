@@ -10,7 +10,7 @@ open System.Reflection
 [<assembly: System.Reflection.AssemblyCompanyAttribute("timeline")>]
 [<assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")>]
 [<assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")>]
-[<assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+1544a9362fec2e008280ea21a6367ac3508fdabf")>]
+[<assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f0d6d4317cf7f4201d9b6e15adb299944ec8ddca")>]
 [<assembly: System.Reflection.AssemblyProductAttribute("timeline")>]
 [<assembly: System.Reflection.AssemblyTitleAttribute("timeline")>]
 [<assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")>]

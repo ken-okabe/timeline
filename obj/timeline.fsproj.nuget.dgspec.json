@@ -20,7 +20,7 @@
           "net8.0"
         ],
         "sources": {
-          "/home/ken/.dotnet/sdk/8.0.405/FSharp/library-packs": {},
+          "/home/ken/.dotnet/sdk/9.0.102/FSharp/library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
@@ -33,7 +33,8 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.100"
       },
       "frameworks": {
         "net8.0": {
@@ -42,7 +43,7 @@
             "FSharp.Core": {
               "include": "Runtime, Compile, Build, Native, Analyzers, BuildTransitive",
               "target": "Package",
-              "version": "[8.0.403, )",
+              "version": "[9.0.101, )",
               "generatePathProperty": true
             }
           },
@@ -62,7 +63,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/home/ken/.dotnet/sdk/8.0.405/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/home/ken/.dotnet/sdk/9.0.102/PortableRuntimeIdentifierGraph.json"
         }
       }
     }
