@@ -1,5 +1,6 @@
 ﻿// For more information see https://aka.ms/fsharp-console-apps
 open Timeline
+open System.Threading.Tasks
 
 let log = // 'a -> unit
     fun a -> printfn "%A" a
@@ -64,3 +65,69 @@ timelineObj
 timelineObj |> TL.next {cmd = "text"; msg = "Hello"}
 timelineObj |> TL.next {cmd = "text"; msg = "Bye"}
 timelineObj |> TL.next Null // do nothing
+
+log "--------------------------------------------"
+
+open System.Timers
+let setTimeout f delay =
+    let timer = new Timer(float delay)
+    timer.AutoReset <- false
+    timer.Elapsed.Add(fun _ -> f())
+    timer.Start()
+
+// メインの処理
+
+let timelineA = Timeline Null
+let timelineB = Timeline Null
+let timelineC = Timeline Null
+let timelineD = Timeline Null
+
+timelineA
+
+|> TL.bind(fun value ->
+    if (isNullT value)
+    then ()
+    else
+        let f =
+            fun _ ->
+                let msg = "Hello"
+                log msg
+                timelineB
+                |> TL.next msg
+        setTimeout f 1000
+    timelineB
+)
+
+|> TL.bind(fun value ->
+    if (isNullT value)
+    then ()
+    else
+        let f =
+            fun _ ->
+                let msg = "World!"
+                log msg
+                timelineC
+                |> TL.next msg
+        setTimeout f 2000
+    timelineC
+)
+
+|> TL.bind(fun value ->
+    if (isNullT value)
+    then ()
+    else
+        let f =
+            fun _ ->
+                let msg = "Seqence ends."
+                log msg
+                timelineD
+                |> TL.next msg
+        setTimeout f 1000
+    timelineD
+)
+|>ignore
+
+timelineA
+|> TL.next "Start!"
+
+System.Console.ReadKey() |> ignore // 出力を待つ
