@@ -6,8 +6,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="timeline/*.fs" />
-    <Compile Include="Program.fs" />
+    <Compile Include="timeline.fs" />
+    <Compile Include="Main.fs" />
   </ItemGroup>
 
 </Project>
