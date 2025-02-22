@@ -89,14 +89,14 @@ module TL =
     type AndResult<'a> =
         { result : list<'a> }
 
-    let AndResult (a: obj) =
+    let andResult (a: obj) =
         match a with
         | :? AndResult<'a> as andResults -> andResults
         | _ -> { result = [a :?> 'a] }
 
     let bindResults a b =
-        let aResult = AndResult a
-        let bResult = AndResult b
+        let aResult = andResult a
+        let bResult = andResult b
         { result = aResult.result @ bResult.result }
 
     // And operation for two timelines
