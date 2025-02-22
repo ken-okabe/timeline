@@ -64,6 +64,7 @@ module TL =
     // -----------------------------------------------------
     // Additional timeline operations
     // -----------------------------------------------------
+
     // Or operation for two timelines
     let Or timelineA timelineB =
         let timelineAB = Timeline Null
@@ -83,9 +84,7 @@ module TL =
 
         timelineAB
 
-
-    // -----------------------------------------------------
-
+    // And operation for two timelines
     type AndResult<'a> =
         { result : list<'a> }
 
@@ -98,7 +97,6 @@ module TL =
         let bResult = andResult b
         { result = aResult.result @ bResult.result }
 
-    // And operation for two timelines
     let And timelineA timelineB =
         let timelineAB: Timeline<obj> = Timeline Null
 
