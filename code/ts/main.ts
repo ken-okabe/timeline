@@ -1,4 +1,6 @@
 import { Timeline } from './timeline';
+import { isNullT, Or, And } from './timelineEx';
+import { AndResult } from './timelineEx';
 
 const log = <A>(a: A): void => console.log(a);
 
@@ -32,7 +34,6 @@ timelineNumber.next(null);
 
 console.log("--------------------------------------------");
 // Example 3: Command Object Timeline
-const isNull = <T>(value: T | null): boolean => value === null;
 
 interface CommandObj {
     cmd: string;
@@ -46,7 +47,7 @@ const timelineObj = Timeline<CommandObj | null>(null);
 // This behavior is similar to Promise .then() method
 timelineObj
     .map((value) => {
-        if (isNull(value)) {
+        if (isNullT(value)) {
             // do nothing on Null
         } else {
             log(value);
@@ -56,3 +57,23 @@ timelineObj
 timelineObj.next({ cmd: "text", msg: "Hello" });
 timelineObj.next({ cmd: "text", msg: "Bye" });
 timelineObj.next(null); // do nothing
+
+console.log("--------------------------------------------");
+
+let timelineA: Timeline<any>
+    = Timeline<object | AndResult<object> | null>(null);
+let timelineB: Timeline<any>
+    = Timeline<object | AndResult<object> | null>(null);
+let timelineC: Timeline<any>
+    = Timeline<object | AndResult<object> | null>(null);
+
+let timelineAB =
+     And(timelineA, timelineB);
+let timelineABC =
+     And(timelineAB, timelineC);
+
+timelineABC.map(log);  // No need for |> ignore equivalent in TS
+
+timelineA.next("A");
+timelineB.next("B");
+timelineC.next("C");

@@ -102,10 +102,12 @@ module TL =
 
         // Map both timelines to update timelineAB
         let updateAnd () =
-            match isNullT (timelineA |> last), isNullT (timelineB |> last) with
+            let lastA = timelineA |> last
+            let lastB = timelineB |> last
+            match isNullT lastA, isNullT lastB with
             | false, false ->
                 timelineAB
-                |> next (bindResults (timelineA |> last) (timelineB |> last))
+                |> next (bindResults lastA lastB)
             | _ -> timelineAB |> next Null
 
         timelineA
