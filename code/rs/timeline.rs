@@ -1,4 +1,4 @@
-// timeline.rs
+// timeline.rs (update)
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::fmt::Debug;
@@ -25,7 +25,7 @@ impl<T: Clone + 'static> Nullable<T> {
     pub fn get(&self) -> Option<&T> {
         self.inner.as_ref()
     }
-    
+
     // Added mapping operation for better usability
     pub fn map<U: Clone + 'static, F: FnOnce(&T) -> U>(&self, f: F) -> Nullable<U> {
         match &self.inner {
@@ -83,7 +83,7 @@ impl<A: Clone + 'static> Timeline<A> {
 
     pub fn next<T: Into<A>>(&self, a: T) {
         *self.last.borrow_mut() = a.into();
-        
+
         // Safely execute callbacks with error handling
         let callbacks = self.fns.borrow();
         for f in callbacks.iter() {
@@ -91,7 +91,7 @@ impl<A: Clone + 'static> Timeline<A> {
             let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 f(cloned_value);
             }));
-            
+
             if result.is_err() {
                 eprintln!("Error executing timeline callback");
             }
@@ -169,7 +169,7 @@ impl<A: Clone + Send + Sync + 'static> ThreadSafeTimeline<A> {
                 return;
             }
         }
-        
+
         // Execute callbacks
         let callbacks = match self.fns.lock() {
             Ok(guard) => guard,
@@ -178,36 +178,54 @@ impl<A: Clone + Send + Sync + 'static> ThreadSafeTimeline<A> {
                 return;
             }
         };
-        
+
         let current_value = self.last();
         for f in callbacks.iter() {
             // Using AssertUnwindSafe to allow catch_unwind to work with any closure
             let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
                 f(current_value.clone());
             }));
-            
+
             if result.is_err() {
                 eprintln!("Error executing thread-safe timeline callback");
             }
         }
     }
-    
+
     pub fn map<B: Clone + Send + Sync + 'static>(&self, f: impl Fn(A) -> B + Send + Sync + 'static) -> ThreadSafeTimeline<B> {
         let current = self.last();
         let timeline_b = ThreadSafeTimeline::new(f(current));
         let timeline_b_clone = timeline_b.clone();
-        
+
         let new_fn = Box::new(move |a: A| {
             timeline_b_clone.next(f(a));
         });
-        
+
         if let Ok(mut callbacks) = self.fns.lock() {
             callbacks.push(new_fn);
         }
-        
+
         timeline_b
     }
-    
+
+    // Added bind method for ThreadSafeTimeline
+    pub fn bind<B: Clone + Send + Sync + 'static>(&self, monadf: impl Fn(A) -> ThreadSafeTimeline<B> + Send + Sync + 'static) -> ThreadSafeTimeline<B> {
+        let current = self.last();
+        let timeline_b = monadf(current);
+        let timeline_b_clone = timeline_b.clone();
+
+        let new_fn = Box::new(move |a: A| {
+            let inner_timeline = monadf(a);
+            timeline_b_clone.next(inner_timeline.last());
+        });
+
+        if let Ok(mut callbacks) = self.fns.lock() {
+            callbacks.push(new_fn);
+        }
+
+        timeline_b
+    }
+
     pub fn unlink(&self) {
         if let Ok(mut callbacks) = self.fns.lock() {
             callbacks.clear();

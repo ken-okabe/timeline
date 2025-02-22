@@ -68,6 +68,22 @@ timelineObj |> TL.next Null // do nothing
 
 log "--------------------------------------------"
 
+let timelineA: Timeline<string> = Timeline Null
+let timelineB: Timeline<string> = Timeline Null
+let timelineC: Timeline<string> = Timeline Null
+
+let timelineABC = TL.And (TL.And timelineA timelineB) timelineC
+
+timelineABC
+|> TL.map log
+|> ignore
+
+timelineA |> TL.next "A"
+timelineB |> TL.next "B"
+timelineC |> TL.next "C"
+
+log "--------------------------------------------"
+
 open System.Timers
 let setTimeout f delay =
     let timer = new Timer(float delay)
@@ -75,14 +91,13 @@ let setTimeout f delay =
     timer.Elapsed.Add(fun _ -> f())
     timer.Start()
 
-// メインの処理
+// Timeline bind sequence
+let timeline0 = Timeline Null
+let timeline1 = Timeline Null
+let timeline2 = Timeline Null
+let timeline3 = Timeline Null
 
-let timelineA = Timeline Null
-let timelineB = Timeline Null
-let timelineC = Timeline Null
-let timelineD = Timeline Null
-
-timelineA
+timeline0
 
 |> TL.bind(fun value ->
     if (isNullT value)
@@ -92,10 +107,10 @@ timelineA
             fun _ ->
                 let msg = "Hello"
                 log msg
-                timelineB
+                timeline1
                 |> TL.next msg
         setTimeout f 1000
-    timelineB
+    timeline1
 )
 
 |> TL.bind(fun value ->
@@ -106,10 +121,10 @@ timelineA
             fun _ ->
                 let msg = "World!"
                 log msg
-                timelineC
+                timeline2
                 |> TL.next msg
         setTimeout f 2000
-    timelineC
+    timeline2
 )
 
 |> TL.bind(fun value ->
@@ -118,16 +133,16 @@ timelineA
     else
         let f =
             fun _ ->
-                let msg = "Seqence ends."
+                let msg = "Sequence ends."
                 log msg
-                timelineD
+                timeline3
                 |> TL.next msg
         setTimeout f 1000
-    timelineD
+    timeline3
 )
 |>ignore
 
-timelineA
+timeline0
 |> TL.next "Start!"
 
-System.Console.ReadKey() |> ignore // 出力を待つ
+System.Console.ReadKey() |> ignore // Keep the console window open in debug mode
