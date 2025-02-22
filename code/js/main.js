@@ -1,4 +1,5 @@
 import { Timeline } from './timeline.js';
+import { isNullT, Or, And } from './timelineEx.js';
 
 const log = (a) => console.log(a);
 
@@ -52,3 +53,23 @@ timelineObj
 timelineObj.next({ cmd: "text", msg: "Hello" });
 timelineObj.next({ cmd: "text", msg: "Bye" });
 timelineObj.next(null); // do nothing
+
+console.log("--------------------------------------------");
+
+let timelineA
+    = Timeline(null);
+let timelineB
+    = Timeline(null);
+let timelineC
+    = Timeline(null);
+
+let timelineAB =
+     And(timelineA, timelineB);
+let timelineABC =
+     And(timelineAB, timelineC);
+
+timelineABC.map(log);  // No need for |> ignore equivalent in TS
+
+timelineA.next("A");
+timelineB.next("B");
+timelineC.next("C");
