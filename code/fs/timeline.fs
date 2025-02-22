@@ -72,14 +72,14 @@ module TL =
         // Map both timelines to update timelineAB only when it's Null
         timelineA
         |> map (fun a ->
-            if not (isNullT a) && isNullT (timelineAB |> last) then
-                timelineAB |> next a)
+            if not (isNullT a) && isNullT (timelineAB |> last)
+            then timelineAB |> next a)
         |> ignore
 
         timelineB
         |> map (fun b ->
-            if not (isNullT b) && isNullT (timelineAB |> last) then
-                timelineAB |> next b)
+            if not (isNullT b) && isNullT (timelineAB |> last)
+            then timelineAB |> next b)
         |> ignore
 
         timelineAB
@@ -103,8 +103,9 @@ module TL =
         // Map both timelines to update timelineAB
         let updateAnd () =
             match isNullT (timelineA |> last), isNullT (timelineB |> last) with
-            | false, false -> timelineAB
-                              |> next (bindResults (timelineA |> last) (timelineB |> last))
+            | false, false ->
+                timelineAB
+                |> next (bindResults (timelineA |> last) (timelineB |> last))
             | _ -> timelineAB |> next Null
 
         timelineA
