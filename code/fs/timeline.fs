@@ -91,9 +91,8 @@ module TL =
 
     let andResult (a: obj) =
         match a with
-        | :? AndResult<'a> as andResults -> andResults
-        | _ -> { result = [a :?> 'a] }
-
+        | :? AndResult<'a> as andResultA -> andResultA
+        | _ -> { result = [a :?> 'a] } //wrap the value in a list of results
     let bindResults a b =
         let aResult = andResult a
         let bResult = andResult b
