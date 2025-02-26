@@ -119,3 +119,13 @@ module TL =
         |> ignore
 
         timelineAB
+
+    // Any operation (equivalent to Or but for multiple timelines)
+    let Any (timelines: list<Timeline<'a>>) =
+        timelines
+        |> List.reduce Or
+
+    // All operation (equivalent to And but for multiple timelines)
+    let All (timelines: list<Timeline<obj>>) =
+        timelines
+        |> List.reduce And

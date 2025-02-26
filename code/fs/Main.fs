@@ -5,6 +5,20 @@ open System.Threading.Tasks
 let log = // 'a -> unit
     fun a -> printfn "%A" a
 
+// Create a new timeline with initial value
+let counterTimeline = Timeline 0
+
+// Register a listener to react to changes
+counterTimeline
+|> TL.map (fun count ->
+    printfn "Counter changed to: %d" count)
+|> ignore // ignore the returned timeline from map
+// logs: "Counter changed to: 0"
+
+// Update the timeline value
+counterTimeline |> TL.next 1 // logs: "Counter changed to: 1"
+counterTimeline |> TL.next 2 // logs: "Counter changed to: 2"
+
 log "--------------------------------------------"
 // Example 1: String Timeline
 // Initialize Timeline with Null
@@ -68,19 +82,91 @@ timelineObj |> TL.next Null // do nothing
 
 log "--------------------------------------------"
 
-let timelineA: Timeline<string> = Timeline Null
-let timelineB: Timeline<string> = Timeline Null
-let timelineC: Timeline<string> = Timeline Null
+let asyncOr1 =
 
-let timelineABC = TL.And (TL.And timelineA timelineB) timelineC
+    let timelineA = Timeline Null
+    let timelineB = Timeline Null
+    let timelineC = Timeline Null
 
-timelineABC
-|> TL.map log
-|> ignore
+    // Or binary operator
+    let (|||) = TL.Or
+    let timelineABC =
+        timelineA ||| timelineB ||| timelineC
 
-timelineA |> TL.next "A"
-timelineB |> TL.next "B"
-timelineC |> TL.next "C"
+    timelineABC
+    |> TL.map log
+    |> ignore
+
+    timelineA |> TL.next "A" // "A"
+    timelineB |> TL.next "B"
+    timelineC |> TL.next "C"
+
+log "--------------------------------------------"
+
+let asyncOr2 =
+
+    let timelineA = Timeline Null
+    let timelineB = Timeline Null
+    let timelineC = Timeline Null
+
+    // Any of these
+    let timelineABC =
+        TL.Any [timelineA; timelineB; timelineC]
+
+    timelineABC
+    |> TL.map log
+    |> ignore
+
+    timelineA |> TL.next "A" // "A"
+    timelineB |> TL.next "B"
+    timelineC |> TL.next "C"
+
+
+log "--------------------------------------------"
+
+let asyncAnd1 =
+
+    let timelineA = Timeline Null
+    let timelineB = Timeline Null
+    let timelineC = Timeline Null
+
+    // And binary operator
+    let (&&&) = TL.And
+    let timelineABC =
+        timelineA &&& timelineB &&& timelineC
+
+    timelineABC
+    |> TL.map log
+    |> ignore
+
+    timelineA |> TL.next "A"
+    timelineB |> TL.next "B"
+    timelineC |> TL.next "C" // { result = ["A"; "B"; "C"] }
+
+log "--------------------------------------------"
+
+let asyncAnd2 =
+
+    let timelineA = Timeline Null
+    let timelineB = Timeline Null
+    let timelineC = Timeline Null
+
+    // All of these
+    let timelineABC =
+        TL.All [timelineA; timelineB; timelineC]
+
+    timelineABC
+    |> TL.map log
+    |> ignore
+
+    timelineA |> TL.next "A"
+    timelineB |> TL.next "B"
+    timelineC |> TL.next "C" // { result = ["A"; "B"; "C"] }
+
+log "--------------------------------------------"
+
+
+
 
 log "--------------------------------------------"
 

@@ -3,18 +3,41 @@ import { isNullT, Or, And } from './timelineEx.js';
 
 const log = (a) => console.log(a);
 
+// Create a new timeline with initial value
+const counterTimeline = Timeline(0);
+
+// Register a listener to react to changes
+counterTimeline
+  .map(count => 
+    console.log(`Counter changed to: ${count}`)
+  );
+// logs: "Counter changed to: 0"
+
+// Update the timeline value
+counterTimeline.next(1); // logs: "Counter changed to: 1"
+counterTimeline.next(2); // logs: "Counter changed to: 2"
+
 console.log("--------------------------------------------");
 // Example 1: String Timeline
 // Initialize Timeline with Null
-const timelineRef = Timeline(null);
+const timeline = Timeline<string | null>(null);
 // Map the Timeline
-timelineRef
-    .map(log);
+// If the value is Null, do nothing
+// Otherwise, log the value
+// This behavior is similar to Promise .then() method
+timeline
+    .map(value => {
+        if (isNullT(value)) {
+            // do nothing on Null
+        } else {
+            log(value);
+        }
+    });
 
-timelineRef.next("Hello");
-timelineRef.next("World!");
-timelineRef.next("JavaScript");
-timelineRef.next(null);
+timeline.next("Hello");
+timeline.next("World!");
+timeline.next("TypeScript");
+timeline.next(null);
 
 console.log("--------------------------------------------");
 // Example 2: Integer Object Timeline
@@ -22,7 +45,7 @@ console.log("--------------------------------------------");
 const timelineNumber = Timeline(null);
 // Map the Timeline
 timelineNumber
-    .map((value) => {
+    .map(value => {
         log(value);
     });
 
