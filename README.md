@@ -455,7 +455,11 @@ type Timeline<'a> =
   let timelineB = timelineA |> TL.map Function
   ```
 
-- `TL.bind`: Monadic bind operation that connects Timelines in sequence  ```fsharp  // ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>  let timelineB = timelineA |> TL.bind (MonadFunction)  ```
+- `TL.bind`: Monadic bind operation that connects Timelines in sequence
+  ```fsharp  
+  // ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>  
+  let timelineB = timelineA |> TL.bind (MonadFunction) 
+  ```
 
 ## Detailed Operation Descriptions
 
