@@ -461,36 +461,49 @@ type Timeline<'a> =
 
 ### TL.last: Timeline<'a> -> 'a
 
-Retrieves the current value stored in the Timeline. This is a simple accessor that returns the `_last` field of the Timeline record.
+Retrieves the current value stored in the  `Timeline` . This is a simple accessor that returns the `_last` field of the  `Timeline`  record.
 
 ### TL.next: 'a -> Timeline<'a> -> unit
 
-Updates the Timeline with a new value and executes all registered callback functions with that value. This is the primary means of pushing new values into the reactive system.
+Updates the  `Timeline`  with a new value and executes all registered callback functions with that value. This is the primary means of pushing new values into the reactive system.
 
 ### TL.map: ('a -> 'b) -> Timeline<'a> -> Timeline<'b>
 
-The functor map operation creates a derived Timeline where:
-
-1. The function is applied to the current value of the source Timeline
-2. A new Timeline is created with the transformed value
-3. A propagation function is registered with the source Timeline
-4. Future updates to the source will be transformed and propagated to the target
-
-Map allows for simple transformations of values flowing through Timelines.
+*   **Purpose:** Transforms the *values* of a `Timeline` using a provided function, producing a new `Timeline` whose values are the results of that transformation.  Think of it as "mapping" each value in the stream to a new value.
+*   **Mechanism:**
+    1.  **Initial Value:**  Creates a *new* `Timeline<'b>` instance. The initial value of this new timeline is the result of applying the transformation function (`'a -> 'b`) to the *current* value of the input `Timeline<'a>`.
+    2.  **Propagation:**  Adds an observer function to the input `Timeline<'a>`.  Whenever the input timeline updates, this observer does the following:
+        *   Takes the new value (`'a`).
+        *   Applies the transformation function (`'a -> 'b`) to the new value.
+        *   Updates the *new* `Timeline<'b>` (created in step 1) with the transformed value using `TL.next`.
+*   **Key Features:**
+    *   **One-to-One Transformation:**  Each value in the input timeline is directly transformed into one value in the output timeline.
+    *   **Always Creates a New Timeline:**  `map` *always* creates a new `Timeline` instance to hold the transformed values. This is necessary because it's directly changing the *type* of the values flowing through.
+    *   **Simple Transformations:** Ideal for straightforward value transformations where you don't need to change the structure of the timeline itself (e.g., converting temperatures, formatting strings, extracting object properties).
+     *   **Functional Purity:** Because of the one-to-one relationship, the map operation on Timeline can easily maintain functional purity.
 
 ### TL.bind: ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>
 
-The monadic bind operation connects two Timelines such that:
-
-1. The function is applied to the current value of the source Timeline to create a new target Timeline
-2. A propagation function is registered with the source Timeline
-3. Future updates to the source will flow through to the target
-
-Bind allows for composing Timelines where each step might depend on the previous value.
+*   **Purpose:**  Chains `Timeline` instances together, where the creation or selection of the *next* `Timeline` depends on the *current value* of the *previous* `Timeline`.  This allows for dynamic and conditional timeline behavior. It *flattens* a `Timeline` of `Timeline`s into a single `Timeline`.
+*   **Mechanism:**
+    1.  **Initial Timeline:**  Calls the provided function (`'a -> Timeline<'b>`) with the *current* value of the input `Timeline<'a>`. This function *returns* a `Timeline<'b>`.  Crucially, this `Timeline<'b>` could be newly created *or* a pre-existing one. This is where the flexibility comes from. This `Timeline<'b>` is the one that will be returned by `bind`.
+    2.  **Propagation:** Adds an observer function to the input `Timeline<'a>`.  Whenever the input timeline updates:
+        *   Takes the new value (`'a`).
+        *    Calls the provided function (`'a -> Timeline<'b>`) using, *a*, to get a *temporary* `Timeline<'b>`.
+        * Obtains new `Timeline<'b>`'s current value.
+        *    Updates the timelineB returned in step 1 using the new value by calling `TL.next`.
+*   **Key Features:**
+    *   **Dynamic Timeline Selection/Creation:** The crucial difference! The function (`'a -> Timeline<'b>`) can:
+        *   Create a *new* `Timeline<'b>` on *each* update of `Timeline<'a>`. (Similar to `map`, but with the ability to create timelines with different structures/observers).
+        *   Return a *pre-existing* `Timeline<'b>`. This is what allows for efficient chaining *without* unnecessary timeline creation. You can conditionally return different timelines based on the input value.
+        *   Return a `Timeline<'b>` that's even based on some external state.
+    *   **Chaining and Sequencing:**  Enables complex workflows where the next step in the process depends on the result of the previous step.  This is essential for asynchronous operations and conditional logic.
+    *   **Flattening:**  While `map` transforms `Timeline<'a>` to `Timeline<'b>`, `bind` transforms `Timeline<'a>` and a function that potentially creates lots of internal `Timeline<'b>`. But returns only one `Timeline<'b>`.
+    *   **Not Necessarily New Timelines:** As you correctly pointed out, `bind` *does not* have to create new timelines on every update.  This makes it much more powerful and efficient for complex scenarios.
 
 ### TL.unlink: Timeline<'a> -> unit
 
-Removes all registered callback functions from the Timeline, effectively disconnecting it from any dependent Timelines. This is important for preventing memory leaks when a Timeline is no longer needed.
+Removes all registered callback functions from the  `Timeline` , effectively disconnecting it from any dependent Timelines. This is important for preventing memory leaks when a Timeline is no longer needed.
 
 ## Reactive Programming Pattern
 
@@ -592,7 +605,7 @@ System.Console.ReadKey() |> ignore
 
 ## Implementation Notes
 
-- Timeline uses mutable fields for efficiency
+-  `Timeline`  uses mutable fields for efficiency
 - Both `map` and `bind` operations maintain references to their source Timelines, but only `bind` can directly reference Timelines defined outside of the function's scope, leveraging its monadic nature.
 - To prevent memory leaks, use `unlink` to clear callbacks when a Timeline is no longer needed
 
