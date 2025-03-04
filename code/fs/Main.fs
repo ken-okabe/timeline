@@ -205,7 +205,7 @@ timeline0
     else
         let f =
             fun _ ->
-                let msg = "World!"
+                let msg =  value + " World!"
                 log msg
                 timeline2
                 |> TL.next msg
@@ -219,7 +219,7 @@ timeline0
     else
         let f =
             fun _ ->
-                let msg = "Sequence ends."
+                let msg = value + " Sequence ends."
                 log msg
                 timeline3
                 |> TL.next msg
@@ -231,4 +231,5 @@ timeline0
 timeline0
 |> TL.next "Start!"
 
-System.Console.ReadKey() |> ignore // Keep the console window open in debug mode
+System.Console.ReadKey() |> ignore 
+// Keep the console window open in debug mode

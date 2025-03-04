@@ -185,7 +185,7 @@ timeline0
       // Do nothing if value is null
     } else {
       setTimeout(() => {
-        const msg = "World!";
+        const msg =  value + " World!";
         log(msg);
         timeline2.next(msg);
       }, 2000);
@@ -197,7 +197,7 @@ timeline0
       // Do nothing if value is null
     } else {
       setTimeout(() => {
-        const msg = "Sequence ends.";
+        const msg = value + " Sequence ends.";
         log(msg);
         timeline3.next(msg);
       }, 1000);
@@ -544,7 +544,7 @@ let setTimeout f delay =
     timer.Elapsed.Add(fun _ -> f())
     timer.Start()
 
-// Chain of bindings with setTimeout
+// Timeline bind sequence
 let timeline0 = Timeline Null
 let timeline1 = Timeline Null
 let timeline2 = Timeline Null
@@ -572,7 +572,7 @@ timeline0
     else
         let f =
             fun _ ->
-                let msg = "World!"
+                let msg =  value + " World!"
                 log msg
                 timeline2
                 |> TL.next msg
@@ -586,7 +586,7 @@ timeline0
     else
         let f =
             fun _ ->
-                let msg = "Sequence ends."
+                let msg = value + " Sequence ends."
                 log msg
                 timeline3
                 |> TL.next msg
@@ -595,7 +595,6 @@ timeline0
 ) // Return timeline3 directy to chain the next bind
 |>ignore
 
-// Start the sequence to trigger the first bind
 timeline0
 |> TL.next "Start!"
 

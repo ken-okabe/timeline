@@ -129,7 +129,7 @@ timeline0
       // Do nothing if value is null
     } else {
       setTimeout(() => {
-        const msg = "World!";
+        const msg =  value + " World!";
         log(msg);
         timeline2.next(msg);
       }, 2000);
@@ -141,7 +141,7 @@ timeline0
       // Do nothing if value is null
     } else {
       setTimeout(() => {
-        const msg = "Sequence ends.";
+        const msg = value + " Sequence ends.";
         log(msg);
         timeline3.next(msg);
       }, 1000);

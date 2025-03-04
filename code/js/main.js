@@ -17,10 +17,10 @@ counterTimeline
 counterTimeline.next(1); // logs: "Counter changed to: 1"
 counterTimeline.next(2); // logs: "Counter changed to: 2"
 
-console.log("--------------------------------------------");
+// console.log("--------------------------------------------");
 // Example 1: String Timeline
 // Initialize Timeline with Null
-const timeline = Timeline<string | null>(null);
+const timeline = Timeline(null);
 // Map the Timeline
 // If the value is Null, do nothing
 // Otherwise, log the value
@@ -96,3 +96,54 @@ timelineABC.map(log);  // No need for |> ignore equivalent in TS
 timelineA.next("A");
 timelineB.next("B");
 timelineC.next("C");
+
+console.log("--------------------------------------------");
+
+// Timeline bind sequence
+const timeline0 = Timeline(null);
+const timeline1 = Timeline(null);
+const timeline2 = Timeline(null);
+const timeline3 = Timeline(null);
+
+// Chain of bindings with setTimeout
+timeline0
+  .bind(value => {
+    if (isNullT(value)) {
+      // Do nothing if value is null
+    } else {
+      setTimeout(() => {
+        const msg = "Hello";
+        log(msg);
+        timeline1.next(msg);
+      }, 1000);
+    }
+    return timeline1; 
+  }) // Return timeline1 directy to chain the next bind
+  .bind(value => {
+    if (isNullT(value)) {
+      // Do nothing if value is null
+    } else {
+      setTimeout(() => {
+        const msg =  value + " World!";
+        log(msg);
+        timeline2.next(msg);
+      }, 2000);
+    }
+    return timeline2;
+  }) // Return timeline2 directy to chain the next bind
+  .bind(value => {
+    if (isNullT(value)) {
+      // Do nothing if value is null
+    } else {
+      setTimeout(() => {
+        const msg = value + " Sequence ends.";
+        log(msg);
+        timeline3.next(msg);
+      }, 1000);
+    }
+    return timeline3;
+  }); // Return timeline3 directy to chain the next bind
+
+// Start the sequence to trigger the first bind
+timeline0.next("Start!");
+ 
