@@ -460,7 +460,7 @@ Timeline implements a reactive programming pattern where:
 2. Computation chains can be constructed using `bind` and `map` operations
 3. Asynchronous processes can be sequenced and coordinated through Timeline chains
 
-## Example Usage
+## Simple Usage: `map` (Functor)
 
 ```fsharp
 // Create source timeline
@@ -478,7 +478,7 @@ source |> TL.next 5
 // Now: source._last = 5, doubled._last = 10, added._last = 20
 ```
 
-## Asynchronous Chaining
+## Asynchronous Chaining: `bind` (Monad)
 
 Timeline can be used to coordinate asynchronous operations:
 
@@ -555,3 +555,9 @@ System.Console.ReadKey() |> ignore
 - Timeline uses mutable fields for efficiency
 - The bind and map operations maintain references to their source Timelines
 - To prevent memory leaks, use `unlink` to clear callbacks when a Timeline is no longer needed
+
+# Can't find Timeline code for your language?
+
+ **Maximize the power of ChatAI !** 
+
+By providing ChatAI with existing sample code in F# and TypeScript, it can translate to most languages.
