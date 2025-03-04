@@ -497,7 +497,7 @@ Removes all registered callback functions from the Timeline, effectively disconn
 Timeline implements a reactive programming pattern where:
 
 1. Changes to source Timelines automatically propagate to derived Timelines
-2. Computation chains can be constructed using `bind` and `map` operations
+2. Computation chains can be constructed using `map` and `bind`  operations
 3. Asynchronous processes can be sequenced and coordinated through Timeline chains
 
 ## Simple Usage: `map` (Functor)
