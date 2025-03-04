@@ -12,8 +12,8 @@ Key features:
 
 - Minimal dependency footprint
 - Functional programming inspired design
+- Composable operations (map/bind/and/or)
 - Consistent API across different language implementations
-- Composable operations (map, bind, and, or)
 - Easy integration with existing codebases
 
 Whether you're building user interfaces, managing application state, handling asynchronous events, or coordinating complex data flows, Timeline provides a unified approach that works seamlessly across language boundaries.
@@ -351,6 +351,51 @@ Accordingly, the TypeScript code with the error should be fixed as below:
 
 *While the naming convention "optional chaining" evokes Option types, its actual behavior differs from nested Option types. Unlike Option types, which allow values to be either Some(value) or None, nullable chaining deals with values that can either be valid values or null. Therefore, "nullable chaining" might be a more accurate and descriptive name.*
 
+## Core Components
+
+### Timeline Data Structure
+
+Both implementations define a `Timeline<'a>` (F#) or `Timeline<A>` (TypeScript) type that has:
+
+- A current/last value (`_last`)
+- A list of functions to execute when the value is updated (`_fns`)
+
+### Key Operations
+
+1. **Timeline Creation**: Initialize a timeline with a starting value
+2. **last**: Get the current value
+3. **next**: Update the value and trigger all registered functions
+4. **map**: Transform a timeline's values using a function
+5. **bind**: Monadic binding operation (for chaining operations)
+6. **unlink**: Remove all registered functions
+
+### Additional Operations
+
+Both implementations also include combinators:
+
+- **Or/Any**: Creates a timeline that resolves when any input timeline resolves
+- **And/All**: Creates a timeline that resolves when all input timelines resolve
+
+## Example Usage
+
+The main files showcase several common patterns:
+
+- Simple value updates and reactions
+- Transforming values with `map` 
+- Chaining operations with `bind`
+- Handling null values
+- Combining timelines with logical operations
+- Asynchronous operations with setTimeout
+
+## Differences Between F# and TypeScript Implementations
+
+- F# uses a more functional style with piping (`|>`)
+- TypeScript implements the Timeline as an object with methods
+- The F# version has more detailed type handling
+- The TypeScript version offers more fluent method chaining, but requires an object-oriented implementation with methods.
+
+This appears to be a lightweight reactive programming framework that could be used for managing asynchronous events, UI updates, or data flow in applications. The implementation follows a functional reactive programming paradigm.
+
 # Timeline Library Specification (F#)
 
 ## Overview
@@ -405,17 +450,13 @@ type Timeline<'a> =
 
 ### Functional Composition
 
-- `TL.bind`: Monadic bind operation that connects Timelines in sequence
-  ```fsharp
-  // ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>
-  let timelineB = timelineA |> TL.bind (fun value -> Timeline (transform value))
-  ```
-
 - `TL.map`: Functor map operation that transforms Timeline values
   ```fsharp
   // ('a -> 'b) -> Timeline<'a> -> Timeline<'b>
-  let timelineB = timelineA |> TL.map transform
+  let timelineB = timelineA |> TL.map Function
   ```
+
+- `TL.bind`: Monadic bind operation that connects Timelines in sequence  ```fsharp  // ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>  let timelineB = timelineA |> TL.bind (MonadFunction)  ```
 
 ## Detailed Operation Descriptions
 
@@ -427,16 +468,6 @@ Retrieves the current value stored in the Timeline. This is a simple accessor th
 
 Updates the Timeline with a new value and executes all registered callback functions with that value. This is the primary means of pushing new values into the reactive system.
 
-### TL.bind: ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>
-
-The monadic bind operation connects two Timelines such that:
-
-1. The function is applied to the current value of the source Timeline to create a new target Timeline
-2. A propagation function is registered with the source Timeline
-3. Future updates to the source will flow through to the target
-
-Bind allows for composing Timelines where each step might depend on the previous value.
-
 ### TL.map: ('a -> 'b) -> Timeline<'a> -> Timeline<'b>
 
 The functor map operation creates a derived Timeline where:
@@ -447,6 +478,16 @@ The functor map operation creates a derived Timeline where:
 4. Future updates to the source will be transformed and propagated to the target
 
 Map allows for simple transformations of values flowing through Timelines.
+
+### TL.bind: ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>
+
+The monadic bind operation connects two Timelines such that:
+
+1. The function is applied to the current value of the source Timeline to create a new target Timeline
+2. A propagation function is registered with the source Timeline
+3. Future updates to the source will flow through to the target
+
+Bind allows for composing Timelines where each step might depend on the previous value.
 
 ### TL.unlink: Timeline<'a> -> unit
 
