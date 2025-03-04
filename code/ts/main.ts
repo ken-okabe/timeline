@@ -100,3 +100,55 @@ timelineABC.map(log);  // No need for |> ignore equivalent in TS
 timelineA.next("A");
 timelineB.next("B");
 timelineC.next("C");
+
+console.log("--------------------------------------------");
+
+ 
+// Timeline bind sequence
+const timeline0 = Timeline<string | null>(null);
+const timeline1 = Timeline<string | null>(null);
+const timeline2 = Timeline<string | null>(null);
+const timeline3 = Timeline<string | null>(null);
+
+// Chain of bindings with setTimeout
+timeline0
+  .bind(value => {
+    if (isNullT(value)) {
+      // Do nothing if value is null
+    } else {
+      setTimeout(() => {
+        const msg = "Hello";
+        log(msg);
+        timeline1.next(msg);
+      }, 1000);
+    }
+    return timeline1; 
+  }) // Return timeline1 directy to chain the next bind
+  .bind(value => {
+    if (isNullT(value)) {
+      // Do nothing if value is null
+    } else {
+      setTimeout(() => {
+        const msg = "World!";
+        log(msg);
+        timeline2.next(msg);
+      }, 2000);
+    }
+    return timeline2;
+  }) // Return timeline2 directy to chain the next bind
+  .bind(value => {
+    if (isNullT(value)) {
+      // Do nothing if value is null
+    } else {
+      setTimeout(() => {
+        const msg = "Sequence ends.";
+        log(msg);
+        timeline3.next(msg);
+      }, 1000);
+    }
+    return timeline3;
+  }); // Return timeline3 directy to chain the next bind
+
+// Start the sequence to trigger the first bind
+timeline0.next("Start!");
+ 

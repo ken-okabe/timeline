@@ -169,7 +169,7 @@ log "--------------------------------------------"
 
 
 log "--------------------------------------------"
-
+// Implementation of setTimeout API, similar to JavaScript
 open System.Timers
 let setTimeout f delay =
     let timer = new Timer(float delay)

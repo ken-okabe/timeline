@@ -6,7 +6,7 @@ type Timeline<'a> =
       mutable _fns: list<'a -> unit> }  // List of functions to execute on updates
 
 // Timeline constructor
-let Timeline =
+let Timeline = // 'a -> Timeline<'a>
     fun a ->
         { _last = a          // Initialize with initial value
           _fns = [] }        // Start with empty function list
