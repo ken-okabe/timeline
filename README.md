@@ -593,7 +593,7 @@ System.Console.ReadKey() |> ignore
 ## Implementation Notes
 
 - Timeline uses mutable fields for efficiency
-- The bind and map operations maintain references to their source Timelines
+- Both `map` and `bind` operations maintain references to their source Timelines, but only `bind` can directly reference Timelines defined outside of the function's scope, leveraging its monadic nature.
 - To prevent memory leaks, use `unlink` to clear callbacks when a Timeline is no longer needed
 
 # Timeline Library Advanced Operations Specification
