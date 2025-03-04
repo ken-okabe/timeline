@@ -382,10 +382,9 @@ The main files showcase several common patterns:
 
 - Simple value updates and reactions
 - Transforming values with `map` 
-- Chaining operations with `bind`
+- Chaining asynchronous operations with `bind`
 - Handling null values
 - Combining timelines with logical operations
-- Asynchronous operations with setTimeout
 
 ## Differences Between F# and TypeScript Implementations
 
