@@ -458,7 +458,7 @@ type Timeline<'a> =
 - `TL.bind`: Monadic bind operation that connects Timelines in sequence
   ```fsharp  
   // ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>  
-  let timelineB = timelineA |> TL.bind (MonadFunction) 
+  let timelineB = timelineA |> TL.bind MonadFunction 
   ```
 
 ## Detailed Operation Descriptions
