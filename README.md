@@ -556,8 +556,174 @@ System.Console.ReadKey() |> ignore
 - The bind and map operations maintain references to their source Timelines
 - To prevent memory leaks, use `unlink` to clear callbacks when a Timeline is no longer needed
 
+# Timeline Library Advanced Operations Specification
+
+## Advanced Timeline Operations
+
+The Timeline library provides several advanced operations for combining and coordinating multiple Timelines. These operations implement logical combinators that create new Timelines based on the state of input Timelines.
+
+## Logical Combinators
+
+### TL.Or: Timeline<'a> -> Timeline<'a> -> Timeline<'a>
+
+Creates a Timeline that resolves to the first non-null value from either of the input Timelines.
+
+```fsharp
+// Type: Timeline<'a> -> Timeline<'a> -> Timeline<'a>
+let combinedTimeline = TL.Or timelineA timelineB
+```
+
+**Behavior:**
+
+- The resulting Timeline will initially contain `Null`
+- When either input Timeline receives a non-null value, the result Timeline is updated with that value (if the result Timeline is still null)
+- The first non-null value "wins" and subsequent updates to either source Timeline are ignored
+- If both source Timelines already have non-null values when `Or` is called, the result Timeline will get the value from `timelineA`
+
+### TL.And: Timeline<'a> -> Timeline<'a> -> Timeline<obj>
+
+Creates a Timeline that resolves when both input Timelines have non-null values, combining their results into an `AndResult` structure.
+
+```fsharp
+// Type: Timeline<'a> -> Timeline<'a> -> Timeline<obj>
+let combinedTimeline = TL.And timelineA timelineB
+```
+
+**Behavior:**
+
+- The resulting Timeline will initially contain `Null`
+- It updates only when both input Timelines have non-null values
+- Results are combined into an `AndResult<'a>` structure which contains a list of all values
+- If either input Timeline returns to null, the result Timeline also returns to null
+
+**AndResult Structure:**
+
+```fsharp
+type AndResult<'a> = { result: list<'a> }
+```
+
+### TL.Any: list<Timeline<'a>> -> Timeline<'a>
+
+Generalizes the `Or` operation to work with a list of Timelines, resolving to the first non-null value from any of the input Timelines.
+
+```fsharp
+// Type: list<Timeline<'a>> -> Timeline<'a>
+let combinedTimeline = TL.Any [timeline1; timeline2; timeline3]
+```
+
+**Behavior:**
+
+- Equivalent to applying `Or` operations in sequence to the list of Timelines
+- Returns a Timeline that resolves to the first non-null value from any of the input Timelines
+
+### TL.All: list<Timeline<obj>> -> Timeline<obj>
+
+Generalizes the `And` operation to work with a list of Timelines, resolving when all input Timelines have non-null values.
+
+```fsharp
+// Type: list<Timeline<obj>> -> Timeline<obj>
+let combinedTimeline = TL.All [timeline1; timeline2; timeline3]
+```
+
+**Behavior:**
+
+- Equivalent to applying `And` operations in sequence to the list of Timelines
+- Returns a Timeline that resolves only when all input Timelines have non-null values
+- Results are combined into a single `AndResult` structure containing all values
+
+## Example Usage
+
+```fsharp
+let asyncOr1 =
+
+    let timelineA = Timeline Null
+        let timelineB = Timeline Null
+        let timelineC = Timeline Null
+
+        // Or binary operator
+        let (|||) = TL.Or
+        let timelineABC =
+            timelineA ||| timelineB ||| timelineC
+
+        timelineABC
+        |> TL.map log
+        |> ignore
+
+        timelineA |> TL.next "A" // "A"
+        timelineB |> TL.next "B"
+        timelineC |> TL.next "C"
+```
+
+```fsharp
+let asyncOr2 =
+
+    let timelineA = Timeline Null
+        let timelineB = Timeline Null
+        let timelineC = Timeline Null
+
+        // Any of these
+        let timelineABC =
+            TL.Any [timelineA; timelineB; timelineC]
+
+        timelineABC
+        |> TL.map log
+        |> ignore
+
+        timelineA |> TL.next "A" // "A"
+        timelineB |> TL.next "B"
+        timelineC |> TL.next "C"
+```
+
+```fsharp
+let asyncAnd1 =
+
+    let timelineA = Timeline Null
+        let timelineB = Timeline Null
+        let timelineC = Timeline Null
+
+        // And binary operator
+        let (&&&) = TL.And
+        let timelineABC =
+            timelineA &&& timelineB &&& timelineC
+
+        timelineABC
+        |> TL.map log
+        |> ignore
+
+        timelineA |> TL.next "A"
+        timelineB |> TL.next "B"
+        timelineC |> TL.next "C" // { result = ["A"; "B"; "C"] }
+```
+
+```fsharp
+let asyncAnd2 =
+
+    let timelineA = Timeline Null
+        let timelineB = Timeline Null
+        let timelineC = Timeline Null
+
+        // All of these
+        let timelineABC =
+            TL.All [timelineA; timelineB; timelineC]
+
+        timelineABC
+        |> TL.map log
+        |> ignore
+
+        timelineA |> TL.next "A"
+        timelineB |> TL.next "B"
+        timelineC |> TL.next "C" // { result = ["A"; "B"; "C"] }
+```
+
+## Implementation Notes
+
+- The `Or` and `And` operations create new Timelines and set up the appropriate mapping relationships
+- These operations use the `map` function internally to propagate updates
+- The `Any` and `All` operations reduce a list of Timelines using the corresponding binary operation
+- The `AndResult` type is used to accumulate and track results from multiple Timelines
+
 # Can't find Timeline code for your language?
 
- **Maximize the power of ChatAI !** 
+**Maximize the power of ChatAI !**
 
 By providing ChatAI with existing sample code in F# and TypeScript, it can translate to most languages.
