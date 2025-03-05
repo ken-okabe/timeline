@@ -164,8 +164,12 @@ let asyncAnd2 =
     timelineC |> TL.next "C" // { result = ["A"; "B"; "C"] }
 
 log "--------------------------------------------"
+open System
+let nullableIntNullable: Nullable<int> = Nullable()
+let nullableIntNullable2: Nullable<int> = Nullable(10)
 
-
+let nt = Timeline nullableIntNullable
+nt |> TL.next nullableIntNullable2
 
 
 log "--------------------------------------------"
@@ -231,5 +235,5 @@ timeline0
 timeline0
 |> TL.next "Start!"
 
-System.Console.ReadKey() |> ignore 
+System.Console.ReadKey() |> ignore
 // Keep the console window open in debug mode
