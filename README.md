@@ -222,6 +222,18 @@ timeline0.next("Start!");
 
 ```
 
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
+
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
+
 ###### frp
 
 # ⚡️ Functional Reactive Programming (FRP)
@@ -281,6 +293,18 @@ $$
 
 **Functional Reactive Programming (FRP)**  is a programming paradigm that uses mathematical expressions, specifically  **binary operations** , as a means of implementing  **Reactive Programming** .
 
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
+
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
+
 ###### nullable
 
 # ⏱️ Nullable Types
@@ -290,6 +314,18 @@ $$
 Given the critical significance of  **Null**  in modern software development, I have dedicated a separate article to exploring its key concepts and benefits.
 
 ### [💡 What is Null, Nullable and Option Types?](./README-whatisNull.md)
+
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
+
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
 
 ###### components
 
@@ -338,6 +374,18 @@ The main files showcase several common patterns:
 - TypeScript implements the Timeline as an object with methods
 - The F# version has more detailed type handling
 - The TypeScript version offers more fluent method chaining, but requires an object-oriented implementation with methods.
+
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
+
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
 
 ###### specification
 
@@ -558,6 +606,18 @@ System.Console.ReadKey() |> ignore
 - Both `map` and `bind` operations maintain references to their source Timelines, but only `bind` can directly reference Timelines defined outside of the function's scope, leveraging its monadic nature.
 - To prevent memory leaks, use `unlink` to clear callbacks when a Timeline is no longer needed
 
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
+
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
+
 ###### advanced
 
 # ⏱️ Timeline Library Advanced Operations Specification
@@ -725,6 +785,18 @@ let asyncAnd2 =
 - These operations use the `map` function internally to propagate updates
 - The `Any` and `All` operations reduce a list of Timelines using the corresponding binary operation
 - The `AndResult` type is used to accumulate and track results from multiple Timelines
+
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
+
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
 
 ###### ai
 
