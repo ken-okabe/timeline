@@ -210,6 +210,8 @@ timeline0.next("Start!");
 
 ```
 
+# ⚡️ Functional Reactive Programming (FRP)
+
 ## What is Functional Programming?
 
 Given the critical significance of Functional Programming in modern software development, I have dedicated a separate article to exploring its key concepts and benefits.
@@ -263,9 +265,15 @@ $$
 
 ## Functional Reactive Programming (FRP)
 
-So, this is FRP.
-
 **Functional Reactive Programming (FRP)**  is a programming paradigm that uses mathematical expressions, specifically  **binary operations** , as a means of implementing  **Reactive Programming** .
+
+# ⏱️ Nullable Types
+
+## What is Null?
+
+Given the critical significance of  **Null**  in modern software development, I have dedicated a separate article to exploring its key concepts and benefits.
+
+### [💡 What is Null, Nullable and Option Types?](./README-whatisNull.md)
 
 # ⏱️ Timeline Core Components
 
@@ -374,7 +382,7 @@ type Timeline<'a> =
 - `TL.bind`: Monadic bind operation that connects Timelines in sequence
   ```fsharp  
   // ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>  
-  let timelineB = timelineA |> TL.bind MonadFunction 
+  let timelineB = timelineA |> TL.bind MonadicFunction 
   ```
 
 ## Detailed Operation Descriptions
