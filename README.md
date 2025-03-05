@@ -1,3 +1,15 @@
+| Contents |
+|--------------|
+| [⏱️ Timeline](#timeline) |
+| [⚡️ Functional Reactive Programming (FRP)](#frp)<br/>&nbsp;&nbsp;[<sub>💡 What is Functional Programming?</sub>](./README-whatisFP.md)<br/>&nbsp;&nbsp;[<sub>💡 How does Functional Programming Code Drive?</sub>](./README-howFP.md)|
+| [⏱️ Nullable Types](#nullable)<br/>&nbsp;&nbsp;[<sub>💡 What is Null, Nullable and Option Types?</sub>](./README-whatisNull.md) |
+| [⏱️ Timeline Core Components](#components) |
+| [⏱️ Timeline Library Specification (F#)](#specification) |
+| [⏱️ Timeline Library Advanced Operations Specification](#advanced) |
+| [❔ Can't find Timeline code for your language?](#ai) |
+
+###### timeline
+
 # ⏱️ Timeline
 
 ## Reactive State Management for Universal Programming Languages
@@ -210,6 +222,8 @@ timeline0.next("Start!");
 
 ```
 
+###### frp
+
 # ⚡️ Functional Reactive Programming (FRP)
 
 ## What is Functional Programming?
@@ -267,6 +281,8 @@ $$
 
 **Functional Reactive Programming (FRP)**  is a programming paradigm that uses mathematical expressions, specifically  **binary operations** , as a means of implementing  **Reactive Programming** .
 
+###### nullable
+
 # ⏱️ Nullable Types
 
 ## What is Null?
@@ -274,6 +290,8 @@ $$
 Given the critical significance of  **Null**  in modern software development, I have dedicated a separate article to exploring its key concepts and benefits.
 
 ### [💡 What is Null, Nullable and Option Types?](./README-whatisNull.md)
+
+###### components
 
 # ⏱️ Timeline Core Components
 
@@ -312,7 +330,6 @@ The main files showcase several common patterns:
 
 ## F# Code
 
-
 ![image](https://raw.githubusercontent.com/ken-okabe/web-images4/refs/heads/main/Screenshot%20From%202025-03-05%2012-31-29.png)
 
 ## Differences Between F# and TypeScript Implementations
@@ -321,6 +338,8 @@ The main files showcase several common patterns:
 - TypeScript implements the Timeline as an object with methods
 - The F# version has more detailed type handling
 - The TypeScript version offers more fluent method chaining, but requires an object-oriented implementation with methods.
+
+###### specification
 
 # ⏱️ Timeline Library Specification (F#)
 
@@ -539,6 +558,8 @@ System.Console.ReadKey() |> ignore
 - Both `map` and `bind` operations maintain references to their source Timelines, but only `bind` can directly reference Timelines defined outside of the function's scope, leveraging its monadic nature.
 - To prevent memory leaks, use `unlink` to clear callbacks when a Timeline is no longer needed
 
+###### advanced
+
 # ⏱️ Timeline Library Advanced Operations Specification
 
 ## Advanced Timeline Operations
@@ -704,6 +725,8 @@ let asyncAnd2 =
 - These operations use the `map` function internally to propagate updates
 - The `Any` and `All` operations reduce a list of Timelines using the corresponding binary operation
 - The `AndResult` type is used to accumulate and track results from multiple Timelines
+
+###### ai
 
 # ❔ Can't find Timeline code for your language?
 

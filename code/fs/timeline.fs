@@ -18,7 +18,7 @@ let isNullT (value: 'a when 'a:not struct) =
     if obj.ReferenceEquals(value, null)  // Checks if value is null
     then true
     else false
-
+    
 // Timeline operations module
 module TL =
     // Get the last/current value
@@ -26,10 +26,12 @@ module TL =
         fun timeline ->
             timeline._last
     // Update timeline with new value and execute all registered functions
+
     let next =
         fun a timeline ->
             timeline._last <- a                       // Update current value
             timeline._fns |> List.iter (fun f -> f a) // Execute all registered functions
+
     // Monadic bind operation
     let bind =
         fun monadf timelineA ->
@@ -41,6 +43,7 @@ module TL =
 
             timelineA._fns <- timelineA._fns @ [ newFn ] // Register new function
             timelineB                                    // Return new timeline
+
     // Functor map operation
     let map =
         fun f timelineA ->
@@ -51,10 +54,12 @@ module TL =
 
             timelineA._fns <- timelineA._fns @ [ newFn ]    // Register new function
             timelineB                                        // Return new timeline
+
     // Remove all registered functions
     let unlink =
         fun timeline ->
             timeline._fns <- []
+
 
     // -----------------------------------------------------
     // Additional timeline operations

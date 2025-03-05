@@ -9,7 +9,7 @@ const counterTimeline = Timeline(0);
 
 // Register a listener to react to changes
 counterTimeline
-  .map(count => 
+  .map(count =>
     console.log(`Counter changed to: ${count}`)
   );
 // logs: "Counter changed to: 0"
@@ -103,7 +103,7 @@ timelineC.next("C");
 
 console.log("--------------------------------------------");
 
- 
+
 // Timeline bind sequence
 const timeline0 = Timeline<string | null>(null);
 const timeline1 = Timeline<string | null>(null);
@@ -122,7 +122,7 @@ timeline0
         timeline1.next(msg);
       }, 1000);
     }
-    return timeline1; 
+    return timeline1;
   }) // Return timeline1 directy to chain the next bind
   .bind(value => {
     if (isNullT(value)) {
@@ -151,4 +151,3 @@ timeline0
 
 // Start the sequence to trigger the first bind
 timeline0.next("Start!");
- 
