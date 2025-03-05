@@ -12,7 +12,7 @@
 
 # ⏱️ Timeline
 
-## Reactive State Management for Universal Programming Languages
+## Language-Agnostic Reactive State Management Library
 
 Timeline is a lightweight, functional reactive programming (FRP) library that provides elegant state management across multiple programming languages. Originally implemented in F#, this repository now includes ports to various languages while maintaining the same core principles and API.
 
