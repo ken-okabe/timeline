@@ -702,7 +702,7 @@ let asyncAnd2 =
 - The `Any` and `All` operations reduce a list of Timelines using the corresponding binary operation
 - The `AndResult` type is used to accumulate and track results from multiple Timelines
 
-# Can't find Timeline code for your language?
+# ❔ Can't find Timeline code for your language?
 
 **Maximize the power of ChatAI !**
 
