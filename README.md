@@ -377,7 +377,29 @@ In TypeScript, programmers need to manually add types to their code, whereas in 
 - The F# version has more detailed type handling
 - The TypeScript version offers more fluent method chaining, but requires an object-oriented implementation with methods.
 
-- In TypeScript, all types can be defined to allow null ([💡 What is Null, Nullable and Option Types?](./README-whatisNull.md)), but in F#, reference types implicitly have null, while value types cannot have null. Although  `System.Nullable`  can be used, it lacks consistency in notation with reference type nulls, leading to code complexity. Therefore, it's often necessary to devise workarounds, such as converting value types to reference type objects.
+- In TypeScript, all types can be defined to allow null ([💡 What is Null, Nullable and Option Types?](./README-whatisNull.md)), but in F#,  **reference types**  implicitly have null, while  **value types**  cannot have null. Although  `System.Nullable`  can be used, it lacks consistency in notation with reference type nulls, leading to code complexity. Therefore, it's often necessary to devise workarounds, such as converting value types to reference type objects.
+
+```fsharp
+type intObj = { // reference type object
+    value: int  // containing value type (int)
+} 
+// Initialize Timeline with Null
+let timelineIntObj: Timeline<intObj>
+     = Timeline Null
+// Map the Timeline
+timelineIntObj
+|> TL.map(fun value ->
+        if (isNullT value)
+        then log null
+        else log value
+    )
+|> ignore
+
+timelineIntObj |> TL.next {value = 1}
+timelineIntObj |> TL.next {value = 2}
+timelineIntObj |> TL.next {value = 3}
+timelineIntObj |> TL.next Null
+```
 
 <img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/separator.svg">
 
@@ -461,15 +483,15 @@ type Timeline<'a> =
 
 ## Detailed Operation Descriptions
 
-###  `TL.last: Timeline<'a> -> 'a` 
+###  `TL.last: Timeline<'a> -> 'a`
 
 Retrieves the current value stored in the  `Timeline` . This is a simple accessor that returns the `_last` field of the  `Timeline`  record.
 
-###  `TL.next: 'a -> Timeline<'a> -> unit` 
+###  `TL.next: 'a -> Timeline<'a> -> unit`
 
 Updates the  `Timeline`  with a new value and executes all registered callback functions with that value. This is the primary means of pushing new values into the reactive system.
 
-###  `TL.map: ('a -> 'b) -> Timeline<'a> -> Timeline<'b>` 
+###  `TL.map: ('a -> 'b) -> Timeline<'a> -> Timeline<'b>`
 
 *   **Purpose:** Transforms the *values* of a `Timeline` using a provided function, producing a new `Timeline` whose values are the results of that transformation.  Think of it as "mapping" each value in the stream to a new value.
 *   **Mechanism:**
@@ -484,7 +506,7 @@ Updates the  `Timeline`  with a new value and executes all registered callback f
     *   **Simple Transformations:** Ideal for straightforward value transformations where you don't need to change the structure of the timeline itself (e.g., converting temperatures, formatting strings, extracting object properties).
      *   **Functional Purity:** Because of the one-to-one relationship, the map operation on Timeline can easily maintain functional purity.
 
-###  `TL.bind: ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>` 
+###  `TL.bind: ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b>`
 
 *   **Purpose:**  Chains `Timeline` instances together, where the creation or selection of the *next* `Timeline` depends on the *current value* of the *previous* `Timeline`.  This allows for dynamic and conditional timeline behavior. It *flattens* a `Timeline` of `Timeline`s into a single `Timeline`.
 *   **Mechanism:**
@@ -503,7 +525,7 @@ Updates the  `Timeline`  with a new value and executes all registered callback f
     *   **Flattening:**  While `map` transforms `Timeline<'a>` to `Timeline<'b>`, `bind` transforms `Timeline<'a>` and a function that potentially creates lots of internal `Timeline<'b>`. But returns only one `Timeline<'b>`.
     *   **Not Necessarily New Timelines:** As you correctly pointed out, `bind` *does not* have to create new timelines on every update.  This makes it much more powerful and efficient for complex scenarios.
 
-###  `TL.unlink: Timeline<'a> -> unit` 
+###  `TL.unlink: Timeline<'a> -> unit`
 
 Removes all registered callback functions from the  `Timeline` , effectively disconnecting it from any dependent Timelines. This is important for preventing memory leaks when a Timeline is no longer needed.
 
@@ -632,7 +654,7 @@ The Timeline library provides several advanced operations for combining and coor
 
 ## Logical Combinators
 
-###  `TL.Or: Timeline<'a> -> Timeline<'a> -> Timeline<'a>` 
+###  `TL.Or: Timeline<'a> -> Timeline<'a> -> Timeline<'a>`
 
 Creates a Timeline that resolves to the first non-null value from either of the input Timelines.
 
@@ -648,7 +670,7 @@ let combinedTimeline = TL.Or timelineA timelineB
 - The first non-null value "wins" and subsequent updates to either source Timeline are ignored
 - If both source Timelines already have non-null values when `Or` is called, the result Timeline will get the value from `timelineA`
 
-###  `TL.And: Timeline<'a> -> Timeline<'a> -> Timeline<obj>` 
+###  `TL.And: Timeline<'a> -> Timeline<'a> -> Timeline<obj>`
 
 Creates a Timeline that resolves when both input Timelines have non-null values, combining their results into an `AndResult` structure.
 
@@ -670,7 +692,7 @@ let combinedTimeline = TL.And timelineA timelineB
 type AndResult<'a> = { result: list<'a> }
 ```
 
-###  `TL.Any: list<Timeline<'a>> -> Timeline<'a>` 
+###  `TL.Any: list<Timeline<'a>> -> Timeline<'a>`
 
 Generalizes the `Or` operation to work with a list of Timelines, resolving to the first non-null value from any of the input Timelines.
 
@@ -684,7 +706,7 @@ let combinedTimeline = TL.Any [timeline1; timeline2; timeline3]
 - Equivalent to applying `Or` operations in sequence to the list of Timelines
 - Returns a Timeline that resolves to the first non-null value from any of the input Timelines
 
-###  `TL.All: list<Timeline<obj>> -> Timeline<obj>` 
+###  `TL.All: list<Timeline<obj>> -> Timeline<obj>`
 
 Generalizes the `And` operation to work with a list of Timelines, resolving when all input Timelines have non-null values.
 
