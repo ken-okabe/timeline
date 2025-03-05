@@ -366,6 +366,8 @@ The main files showcase several common patterns:
 
 ## F# Code of Timeline
 
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/fsharp.svg">
+
 ![image](https://raw.githubusercontent.com/ken-okabe/web-images4/refs/heads/main/Screenshot%20From%202025-03-05%2012-31-29.png)
 
 In TypeScript, programmers need to manually add types to their code, whereas in F#, this is not necessary. The screenshot above shows VSCode, but type annotations are automatically inferred by the F# compiler and displayed in the editor.
@@ -378,6 +380,8 @@ In TypeScript, programmers need to manually add types to their code, whereas in 
 - The TypeScript version offers more fluent method chaining, but requires an object-oriented implementation with methods.
 
 - In TypeScript, all types can be defined to allow null ([💡 What is Null, Nullable and Option Types?](./README-whatisNull.md)), but in F#,  **reference types**  implicitly have null, while  **value types**  cannot have null. Although  `System.Nullable`  can be used, it lacks consistency in notation with reference type nulls, leading to code complexity. Therefore, it's often necessary to devise workarounds, such as converting value types to reference type objects.
+
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/fsharp.svg">
 
 ```fsharp
 type intObj = { // reference type object
