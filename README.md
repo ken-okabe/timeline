@@ -364,11 +364,17 @@ The main files showcase several common patterns:
 - Handling null values
 - Combining timelines with logical operations
 
-## F# Code of Timeline
+## Timeline Code
 
 <img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/fsharp.svg">
 
 ![image](https://raw.githubusercontent.com/ken-okabe/web-images4/refs/heads/main/Screenshot%20From%202025-03-05%2012-31-29.png)
+
+---
+
+<img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/typescript.svg">
+
+![image](https://github.com/ken-okabe/web-images4/blob/main/Screenshot%20From%202025-03-05%2014-51-24.png?raw=true)
 
 In TypeScript, programmers need to manually add types to their code, whereas in F#, this is not necessary. The screenshot above shows VSCode, but type annotations are automatically inferred by the F# compiler and displayed in the editor.
 
