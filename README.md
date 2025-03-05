@@ -310,14 +310,17 @@ The main files showcase several common patterns:
 - Handling null values
 - Combining timelines with logical operations
 
+### F# Code
+
+
+![image](https://raw.githubusercontent.com/ken-okabe/web-images4/refs/heads/main/Screenshot%20From%202025-03-05%2012-31-29.png)
+
 ## Differences Between F# and TypeScript Implementations
 
 - F# uses a more functional style with piping (`|>`)
 - TypeScript implements the Timeline as an object with methods
 - The F# version has more detailed type handling
 - The TypeScript version offers more fluent method chaining, but requires an object-oriented implementation with methods.
-
-This appears to be a lightweight reactive programming framework that could be used for managing asynchronous events, UI updates, or data flow in applications. The implementation follows a functional reactive programming paradigm.
 
 # ⏱️ Timeline Library Specification (F#)
 

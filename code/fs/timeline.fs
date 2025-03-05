@@ -1,5 +1,4 @@
 module Timeline
-
 // Timeline type definition
 type Timeline<'a> =
     { mutable _last: 'a       // Stores the most recent value
@@ -26,36 +25,32 @@ module TL =
     let last =
         fun timeline ->
             timeline._last
-
     // Update timeline with new value and execute all registered functions
     let next =
         fun a timeline ->
-            timeline._last <- a                           // Update current value
-            timeline._fns |> List.iter (fun f -> f a)    // Execute all registered functions
-
+            timeline._last <- a                       // Update current value
+            timeline._fns |> List.iter (fun f -> f a) // Execute all registered functions
     // Monadic bind operation
     let bind =
         fun monadf timelineA ->
-            let timelineB = timelineA._last |> monadf    // Create new timeline from current value
-            let newFn =                                   // Create function to propagate future updates
+            let timelineB = timelineA._last |> monadf // Create new timeline with monadF
+            let newFn =                    // Create function to propagate future updates
                 fun a ->
                     let timeline = a |> monadf
                     timelineB |> next timeline._last
 
             timelineA._fns <- timelineA._fns @ [ newFn ] // Register new function
-            timelineB                                     // Return new timeline
-
+            timelineB                                    // Return new timeline
     // Functor map operation
     let map =
         fun f timelineA ->
-            let timelineB = Timeline (timelineA._last |> f)  // Create new timeline with transformed value
-            let newFn =                                      // Create function to propagate future updates
+            let timelineB = Timeline (timelineA._last |> f) // Create new timeline with f
+            let newFn =                    // Create function to propagate future updates
                 fun a ->
                     timelineB |> next (a |> f)
 
             timelineA._fns <- timelineA._fns @ [ newFn ]    // Register new function
             timelineB                                        // Return new timeline
-
     // Remove all registered functions
     let unlink =
         fun timeline ->
