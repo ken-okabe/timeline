@@ -12,7 +12,10 @@ Both programming paradigms have expressions and statements, but in Functional Pr
 
 ---
 
-***The documents in this repository heavily utilize LaTeX. Unfortunately, the GitHub webpage/app on mobile devices cannot render LaTeX. Therefore, to properly view the entire content, including the LaTeX portions, you will need to use a desktop environment.***
+***The documents in this repository heavily utilize LaTeX. Unfortunately, the GitHub webpage/app on mobile devices cannot render LaTeX ([Render of LaTeX in mobile (*.md files) #41372](https://github.com/orgs/community/discussions/41372)). Therefore, to properly view the entire content, including the LaTeX portions, you will need to use a desktop environment.***
+
+
+
 
 ---
 
