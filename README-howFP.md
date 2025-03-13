@@ -10,6 +10,12 @@ In contrast,  **Imperative Programming**  is a paradigm that uses  **Statements*
 
 Both programming paradigms have expressions and statements, but in Functional Programming, expressions are primarily used to compose other expressions, while in Imperative Programming, statements are primarily used to control the flow of execution.
 
+---
+
+***The documents in this repository heavily utilize LaTeX. Unfortunately, the GitHub webpage/app on mobile devices cannot render LaTeX. Therefore, to properly view the entire content, including the LaTeX portions, you will need to use a desktop environment.***
+
+---
+
 <img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/notefooter.svg">
 
 https://gist.github.com/assets/1316994/7b2ef060-1fa6-47d8-912c-772ff317a9aa

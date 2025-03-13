@@ -273,6 +273,10 @@ This binary operation corresponds to an operation in [spreadsheet apps](https://
 
 ---
 
+***The documents in this repository heavily utilize LaTeX. Unfortunately, the GitHub webpage/app on mobile devices cannot render LaTeX. Therefore, to properly view the entire content, including the LaTeX portions, you will need to use a desktop environment.***
+
+---
+
 ## 🔍 Functions
 
 ---

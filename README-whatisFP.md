@@ -10,6 +10,12 @@ Both programming paradigms have expressions and statements, but in Functional Pr
 
 [💡 How does Functional Programming Code Drive?](./README-howFP.md)
 
+---
+
+***The documents in this repository heavily utilize LaTeX. Unfortunately, the GitHub webpage/app on mobile devices cannot render LaTeX. Therefore, to properly view the entire content, including the LaTeX portions, you will need to use a desktop environment.***
+
+---
+
 ## What is Expression?
 
 In mathematics and programming, an expression is a combination of  **values**,  **operators**  and  **functions** .
