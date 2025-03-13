@@ -12,9 +12,7 @@ Both programming paradigms have expressions and statements, but in Functional Pr
 
 <img width="100%" src="https://raw.githubusercontent.com/ken-okabe/web-images/main/notefooter.svg">
 
-<video controls muted=false
-  src="https://gist.github.com/assets/1316994/7b2ef060-1fa6-47d8-912c-772ff317a9aa" type="video/mp4">
-</video>
+https://gist.github.com/assets/1316994/7b2ef060-1fa6-47d8-912c-772ff317a9aa
 
 This insight is widely shared, and many people today may know what Functional Programming is.
 
@@ -30,9 +28,7 @@ Therefore, statements that control the flow of code, in principle, are not requi
 
 ## Operator associativity
 
-<video controls muted=false
-  src="https://gist.github.com/assets/1316994/4d5fecc6-df1e-4a64-bfc2-883446383b6d" type="video/mp4">
-</video>
+https://gist.github.com/assets/1316994/4d5fecc6-df1e-4a64-bfc2-883446383b6d
 
 Let's consider an expression:
 
@@ -98,9 +94,7 @@ Expressions follow a set of  **Operator associativity**  and  **precedence**  ru
 
 - Operator precedence
 
-<video controls muted=false
-  src="https://gist.github.com/assets/1316994/5908d34e-9f66-4986-91dc-410ebed99df2" type="video/mp4">
-</video>
+https://gist.github.com/assets/1316994/5908d34e-9f66-4986-91dc-410ebed99df2
 
 What is  **Operator precedence** ?
 

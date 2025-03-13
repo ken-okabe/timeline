@@ -64,9 +64,7 @@ Their ability to combine values, operators and functions with defined evaluation
 
 ## What is Binary operation?
 
-<video controls muted=false
-  src="https://gist.github.com/assets/1316994/f1261018-37d8-4de1-bf17-0d4e87c9e2e6" type="video/mp4">
-</video>
+https://gist.github.com/user-attachments/assets/2803dd1d-aad7-4d1c-96d5-8d459e80d7de
 
 In mathematics, a  **binary operation**  is a  **rule that combines two elements** , called  **operands** , to produce  **another element using an operator.**
 
