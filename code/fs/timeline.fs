@@ -1,4 +1,9 @@
 module Timeline
+
+type Now = Now of string
+
+let Now =
+    Now "conceptually mutable cursor point on a timeline, or the timestamp when the code reads this value"
 // Timeline type definition
 type Timeline<'a> =
     { mutable _last: 'a       // Stores the most recent value
@@ -18,19 +23,30 @@ let isNullT (value: 'a when 'a:not struct) =
     if obj.ReferenceEquals(value, null)  // Checks if value is null
     then true
     else false
-    
+
 // Timeline operations module
 module TL =
     // Get the last/current value
-    let last =
-        fun timeline ->
+    let at =
+        fun (now: Now) timeline ->
             timeline._last
     // Update timeline with new value and execute all registered functions
 
-    let next =
-        fun a timeline ->
+    let define =
+        fun (now: Now) a timeline ->
             timeline._last <- a                       // Update current value
             timeline._fns |> List.iter (fun f -> f a) // Execute all registered functions
+
+    // Functor map operation
+    let map =
+        fun f timelineA ->
+            let timelineB = Timeline (timelineA._last |> f) // Create new timeline with f
+            let newFn =                    // Create function to propagate future updates
+                fun a ->
+                    timelineB |> define Now (a |> f)
+
+            timelineA._fns <- timelineA._fns @ [ newFn ]    // Register new function
+            timelineB
 
     // Monadic bind operation
     let bind =
@@ -39,21 +55,24 @@ module TL =
             let newFn =                    // Create function to propagate future updates
                 fun a ->
                     let timeline = a |> monadf
-                    timelineB |> next timeline._last
+                    timelineB |> define Now timeline._last
 
             timelineA._fns <- timelineA._fns @ [ newFn ] // Register new function
             timelineB                                    // Return new timeline
 
-    // Functor map operation
-    let map =
-        fun f timelineA ->
-            let timelineB = Timeline (timelineA._last |> f) // Create new timeline with f
-            let newFn =                    // Create function to propagate future updates
-                fun a ->
-                    timelineB |> next (a |> f)
+    /// Kleisli composition (Monadic Function Composition) operator.
+    /// Composes two monadic functions f and g, applying f first, then g.
+    /// Equivalent to the mathematical operator ';' used in the verification section.
+    /// Signature: ('a -> Timeline<'b>) -> ('b -> Timeline<'c>) -> ('a -> Timeline<'c>)
+    let inline (>>>) f g =
+        fun a ->
+            let timelineB = f a // Apply the first function
+            timelineB |> bind g // Bind the result with the second function using pipe operator
 
-            timelineA._fns <- timelineA._fns @ [ newFn ]    // Register new function
-            timelineB                                        // Return new timeline
+    /// The identity Kleisli arrow (Monadic Function).
+    /// Lifts a value 'a into a static Timeline<'a>.
+    /// Also known as 'return' or 'pure'.
+    let ID = fun (a: 'a) -> Timeline a // Calls the Timeline constructor
 
     // Remove all registered functions
     let unlink =
@@ -61,6 +80,13 @@ module TL =
             timeline._fns <- []
 
 
+    let link =
+        fun timelineB timelineA ->
+            timelineA
+            |> map (fun value ->
+                timelineB
+                |> define Now value)
+            |> ignore
     // -----------------------------------------------------
     // Additional timeline operations
     // -----------------------------------------------------
@@ -72,14 +98,14 @@ module TL =
         // Map both timelines to update timelineAB only when it's Null
         timelineA
         |> map (fun a ->
-            if not (isNullT a) && isNullT (timelineAB |> last)
-            then timelineAB |> next a)
+            if not (isNullT a) && isNullT (timelineAB |> at Now)
+            then timelineAB |> define Now a)
         |> ignore
 
         timelineB
         |> map (fun b ->
-            if not (isNullT b) && isNullT (timelineAB |> last)
-            then timelineAB |> next b)
+            if not (isNullT b) && isNullT (timelineAB |> at Now)
+            then timelineAB |> define Now b)
         |> ignore
 
         timelineAB
@@ -102,13 +128,13 @@ module TL =
 
         // Map both timelines to update timelineAB
         let updateAnd () =
-            let lastA = timelineA |> last
-            let lastB = timelineB |> last
+            let lastA = timelineA |> at Now
+            let lastB = timelineB |> at Now
             match isNullT lastA, isNullT lastB with
             | false, false ->
                 timelineAB
-                |> next (bindResults lastA lastB)
-            | _ -> timelineAB |> next Null
+                |> define Now (bindResults lastA lastB)
+            | _ -> timelineAB |> define Now Null
 
         timelineA
         |> map (fun _ -> updateAnd())
