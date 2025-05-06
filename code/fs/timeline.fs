@@ -191,43 +191,6 @@ module Combinators =
 
     open TL // Access core operations
 
-    // map2 calls TL.define and TL.at from *outside* the TL module
-    let map2<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'a> -> Timeline<'b> -> Timeline<'c option> =
-        fun f timelineA timelineB ->
-            let timelineC = Timeline None
-            let mutable lastA : 'a option = None
-            let mutable lastB : 'b option = None
-
-            let updateC () =
-                match lastA, lastB with
-                | Some a, Some b ->
-                    // Keep TL. prefix when calling from Combinators into TL
-                    timelineC |> TL.define Now (Some (f a b))
-                | _, _ ->
-                    // Keep TL. prefix when calling from Combinators into TL
-                    let isSome = timelineC |> TL.at Now |> Option.isSome
-                    if isSome then
-                        // Keep TL. prefix when calling from Combinators into TL
-                        timelineC |> TL.define Now None
-
-            let reactionA valueA =
-                lastA <- Some valueA
-                updateC()
-
-            let reactionB valueB =
-                lastB <- Some valueB
-                updateC()
-
-            let _depA = DependencyCore.registerDependency timelineA.id timelineC.id (reactionA :> obj) None
-            let _depB = DependencyCore.registerDependency timelineB.id timelineC.id (reactionB :> obj) None
-
-            // Keep TL. prefix when calling from Combinators into TL
-            lastA <- Some (timelineA |> TL.at Now)
-            lastB <- Some (timelineB |> TL.at Now)
-            updateC()
-
-            timelineC
-
     // Or calls TL.define and TL.at from *outside* the TL module
     let Or<'a when 'a : null> : Timeline<'a> -> Timeline<'a> -> Timeline<'a> =
         fun timelineA timelineB ->
