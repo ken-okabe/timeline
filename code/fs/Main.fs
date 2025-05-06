@@ -1,10 +1,12 @@
-﻿open Timeline // Access the library module and Now type/value
+﻿
+open Timeline // Access the library module and Now type/value
 
 open System // For DateTime, TimeSpan, Thread
 open System.Timers
 open System.Diagnostics // Required for Stopwatch
 
-// --- Helper Functions ---
+// --- Stopwatch for Elapsed Time ---
+let stopwatch = Stopwatch()
 
 // Helper: Executes function f after 'delay' ms (simple version)
 let setTimeout : (unit -> unit) -> int -> unit =
@@ -14,10 +16,6 @@ let setTimeout : (unit -> unit) -> int -> unit =
         timer.Elapsed.Add(fun _ -> f()) // Execute the callback directly
         timer.Start()
         // Error handling and Dispose are omitted for simplicity
-
-// --- Stopwatch for Elapsed Time ---
-// Stopwatch instance to measure elapsed time for logs
-let stopwatch = Stopwatch()
 
 // --- Logging Timeline Setup ---
 // Timeline dedicated to receiving log messages
@@ -48,8 +46,9 @@ let asyncChainResultTimeline = // This variable will ultimately point to the sam
     step0
     |> TL.bind (fun value -> // Reacts to step0 updates. 'value' is string
         // Check if the trigger value is valid (not null)
-        if not (isNull value) then
-            // Log the trigger event
+        if isNull value
+        then ()
+        else
             logTimeline |> TL.define Now $"Step 0 Triggered with: '{value}'"
             // Define the async work for step 1
             let work1 () = // Callback for setTimeout
@@ -60,15 +59,14 @@ let asyncChainResultTimeline = // This variable will ultimately point to the sam
             // Schedule the async work
             logTimeline |> TL.define Now "Scheduling Step 1 (2000ms delay)..."
             setTimeout work1 2000 // 2000ms delay
-        else
-            () // Do nothing if the trigger value is null
-
         // IMPORTANT: bind must synchronously return the timeline for the next step
         step1 // Return step1 timeline as the result of this bind operation
     )
     |> TL.bind (fun value -> // Reacts to step1 updates. 'value' is string
-        if not (isNull value) then
-            logTimeline |> TL.define Now $"Step 2 Logic: Processing result from Step 1: '{value}'" // MODIFIED LINE
+        if isNull value
+        then ()
+        else
+            logTimeline |> TL.define Now $"Step 2 Received the Result from Step 1: '{value}'"
             // Define the async work for step 2
             let work2 () =
                 let result2 = value + " -> Sequence" // Perform some work
@@ -76,13 +74,13 @@ let asyncChainResultTimeline = // This variable will ultimately point to the sam
                 step2 |> TL.define Now result2 // Define the string result directly
             logTimeline |> TL.define Now "Scheduling Step 2 (3000ms delay)..."
             setTimeout work2 3000 // 3000ms delay
-        else
-             () // Do nothing if the received value is null
         step2
     )
     |> TL.bind (fun value -> // Reacts to step2 updates. 'value' is string
-        if not (isNull value) then
-            logTimeline |> TL.define Now $"Step 3 Logic: Processing result from Step 2: '{value}'" // MODIFIED LINE
+        if isNull value
+        then ()
+        else
+            logTimeline |> TL.define Now $"Step 3 Received the Result from Step 2: '{value}'"
             // Define the async work for step 3
             let work3 () =
                 let result3 = value + " -> Done!!"
@@ -90,8 +88,6 @@ let asyncChainResultTimeline = // This variable will ultimately point to the sam
                 step3 |> TL.define Now result3 // Define the string result directly
             logTimeline |> TL.define Now "Scheduling Step 3 (1000ms delay)..."
             setTimeout work3 1000 // 1000ms delay
-        else
-             () // Do nothing if the received value is null
         step3
     )
 
@@ -108,6 +104,11 @@ System.Threading.Thread.Sleep(7000) // Wait 7 seconds
 
 stopwatch.Stop() // Stop measuring time
 logTimeline |> TL.define Now $"Sequence finished. Total elapsed: {stopwatch.Elapsed}"
+
+
+
+
+
 // Assuming Timeline type and TL module (including map, define, link, isNull, Now)
 // are defined elsewhere and accessible.
 // For example:
