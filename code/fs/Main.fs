@@ -42,7 +42,6 @@ let makeAsyncHttpRequest (url: string) : Timeline<HttpResponseInfo> =
 
     async {
         try
-            // 修正箇所①
             logTimeline |> TL.define Now (sprintf "[HTTP Log] Starting request to: %s" url)
             use! response = httpClient.GetAsync(url) |> Async.AwaitTask
 
@@ -59,12 +58,10 @@ let makeAsyncHttpRequest (url: string) : Timeline<HttpResponseInfo> =
                 IsSuccess = success
                 ContentSummary = summary
             }
-            // 修正箇所②
             logTimeline |> TL.define Now (sprintf "[HTTP Log] Request to %s completed. Status: %d, Success: %b" url statusCode success)
             resultTimeline |> TL.define Now responseInfo
         with
         | ex ->
-            // 修正箇所③
             logTimeline |> TL.define Now (sprintf "[HTTP Log] Request to %s FAILED. Error: %s" url ex.Message)
             let errorInfo = {
                 Url = url
