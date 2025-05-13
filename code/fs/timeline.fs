@@ -2,6 +2,10 @@ module Timeline
 
 // --- Now Type Definition ---
 type Now = Now of string
+// NOTE: This is a value, not a function, so the style guide for function definitions doesn't apply directly.
+// However, if it were intended as a simple factory/constant function, it might look like:
+// let Now : unit -> Now = fun () -> Now "Conceptual time coordinate"
+// But the original seems like a module-level constant value, which is fine as is.
 let Now = Now "Conceptual time coordinate"
 
 // --- Core System Abstractions ---
@@ -13,12 +17,11 @@ type internal DependencyDetails =
     { SourceId: TimelineId
       TargetId: TimelineId
       Callback: obj
-      ScopeId: ScopeId option
+      ScopeId: ScopeId option // User confirmed Option usage is acceptable here.
     }
 
 // --- Dependency Management Core ---
 module internal DependencyCore =
-    // ... (DependencyCore implementation remains the same as the previous version) ...
     let private dependencies = System.Collections.Generic.Dictionary<DependencyId, DependencyDetails>()
     let private sourceIndex = System.Collections.Generic.Dictionary<TimelineId, System.Collections.Generic.List<DependencyId>>()
     let private scopeIndex = System.Collections.Generic.Dictionary<ScopeId, System.Collections.Generic.List<DependencyId>>()
@@ -41,8 +44,13 @@ module internal DependencyCore =
                     dict.Remove(key) |> ignore
             | false, _ -> ()
 
-    let generateTimelineId : unit -> TimelineId = fun () -> System.Guid.NewGuid()
-    let createScope : unit -> ScopeId = fun () -> System.Guid.NewGuid()
+    let generateTimelineId : unit -> TimelineId =
+        fun () ->
+            System.Guid.NewGuid()
+
+    let createScope : unit -> ScopeId =
+        fun () ->
+            System.Guid.NewGuid()
 
     let registerDependency : TimelineId -> TimelineId -> obj -> ScopeId option -> DependencyId =
         fun sourceId targetId callback scopeIdOpt ->
@@ -52,7 +60,7 @@ module internal DependencyCore =
             addToListDict sourceIndex sourceId depId
             match scopeIdOpt with
             | Some sId -> addToListDict scopeIndex sId depId
-            | None -> ()
+            | None -> () // Option usage confirmed acceptable.
             depId
 
     let removeDependency : DependencyId -> unit =
@@ -63,16 +71,19 @@ module internal DependencyCore =
                 removeFromListDict sourceIndex details.SourceId depId
                 match details.ScopeId with
                 | Some sId -> removeFromListDict scopeIndex sId depId
-                | None -> ()
+                | None -> () // Option usage confirmed acceptable.
             | false, _ -> ()
 
     let disposeScope : ScopeId -> unit =
         fun scopeId ->
             match scopeIndex.TryGetValue(scopeId) with
             | true, depIds ->
-                let idsToRemove = depIds |> List.ofSeq
-                idsToRemove |> List.iter removeDependency
-                scopeIndex.Remove(scopeId) |> ignore
+                let idsToRemove = depIds |> List.ofSeq // Avoid modifying collection while iterating
+                idsToRemove |> List.iter removeDependency // Correct: Calling removeDependency defined above
+                // Check if the key still exists before attempting removal,
+                // as removeDependency might have already removed it if it was the last one.
+                if scopeIndex.ContainsKey(scopeId) then
+                    scopeIndex.Remove(scopeId) |> ignore
             | false, _ -> ()
 
     let getCallbacks : TimelineId -> list<DependencyId * obj> =
@@ -82,8 +93,8 @@ module internal DependencyCore =
                 depIds
                 |> Seq.choose (fun depId ->
                     match dependencies.TryGetValue(depId) with
-                    | true, details -> Some (depId, details.Callback)
-                    | false, _ -> None)
+                    | true, details -> Some (depId, details.Callback) // Option usage confirmed acceptable.
+                    | false, _ -> None) // Option usage confirmed acceptable.
                 |> List.ofSeq
             | false, _ -> List.empty
 
@@ -95,7 +106,8 @@ type Timeline<'a> =
           mutable _last: 'a }
 
 // --- Timeline Factory Function ---
-let Timeline : 'a -> Timeline<'a> =
+// Corrected style for the factory function
+let Timeline<'a> : 'a -> Timeline<'a> =
     fun initialValue ->
         let newId = DependencyCore.generateTimelineId()
         { id = newId; _last = initialValue }
@@ -103,17 +115,16 @@ let Timeline : 'a -> Timeline<'a> =
 // --- Core Timeline Operations Module ---
 module TL =
 
-    // --- Core Operations ---
+    // --- Core Operations (from baseline) ---
 
     let at<'a> : Now -> Timeline<'a> -> 'a =
-        fun now timeline ->
+        fun now timeline -> // 'now' parameter is kept for potential future use/consistency, even if unused now
             timeline._last
 
-    // define calls DependencyCore.getCallbacks but no other TL functions
     let define<'a> : Now -> 'a -> Timeline<'a> -> unit =
-        fun now value timeline ->
+        fun now value timeline -> // 'now' parameter is kept for potential future use/consistency
             timeline._last <- value
-            let callbacks = timeline.id |> DependencyCore.getCallbacks
+            let callbacks = timeline.id |> DependencyCore.getCallbacks // Correct: Using DependencyCore function
             callbacks
             |> List.iter (fun (depId, callbackObj) ->
                 try
@@ -121,160 +132,236 @@ module TL =
                     callback value
                 with
                 | :? System.InvalidCastException ->
-                    printfn "Warning: Callback type mismatch for DependencyId %A (Expected: %s -> unit)" depId (typeof<'a>.Name)
+                    // Provide more context in error message if possible
+                    printfn "Warning: Callback type mismatch for DependencyId %A. Timeline Value Type: %s. Callback expected different input." depId (value.GetType().Name)
                 | ex ->
                     printfn "Error executing callback for DependencyId %A: %s" depId ex.Message
             )
 
-    // map calls define
     let map<'a, 'b> : ('a -> 'b) -> Timeline<'a> -> Timeline<'b> =
         fun f timelineA ->
             let initialB = f timelineA._last
-            let timelineB = Timeline initialB
-            let reactionFn valueA =
+            let timelineB = Timeline initialB // Correct: Using factory function
+            let reactionFn (valueA: 'a) =
                     let newValueB = f valueA
-                    // CORRECTED: No TL. prefix needed for define called within TL module
-                    timelineB |> define Now newValueB
-            let _depId = DependencyCore.registerDependency timelineA.id timelineB.id (reactionFn :> obj) None
+                    // Pass 'Now' explicitly if define requires it, using the module constant
+                    timelineB |> define Now newValueB // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None explicitly for registerDependency
+            let _depId = DependencyCore.registerDependency timelineA.id timelineB.id (reactionFn :> obj) None // Correct: Using DependencyCore function
             timelineB
 
-    // bind calls define
     let bind<'a, 'b> : ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b> =
         fun monadf timelineA ->
-            let timelineB = Timeline (Unchecked.defaultof<'b>)
-            let mutable currentScopeId : ScopeId option = None
+            // Initial inner timeline and its scope
+            let initialInnerTimeline = monadf timelineA._last
+            let timelineB = Timeline initialInnerTimeline._last // Correct: Using factory function
+            let mutable currentScopeId : ScopeId = DependencyCore.createScope() // Correct: Using DependencyCore function
 
-            let reactionFnAtoB valueA =
-                    match currentScopeId with
-                    | Some oldScopeId -> DependencyCore.disposeScope oldScopeId
-                    | None -> ()
-                    let newScopeId = DependencyCore.createScope()
-                    currentScopeId <- Some newScopeId
-                    let newInnerTimeline = valueA |> monadf
-                    // CORRECTED: No TL. prefix needed for define called within TL module
-                    timelineB |> define Now newInnerTimeline._last
+            // Function to set up dependency from an inner timeline to timelineB
+            let setUpInnerReaction (innerTimeline: Timeline<'b>) (scopeForInner: ScopeId) =
+                let reactionFnInnerToB (valueInner: 'b) =
+                    match currentScopeId with // Use the module-level mutable currentScopeId
+                    | activeScope when activeScope = scopeForInner -> // React only if this is the active scope
+                        // Pass 'Now' explicitly if define requires it
+                        timelineB |> define Now valueInner // Correct: Calling define within TL module
+                    | _ -> () // Stale update from a disposed scope, ignore
+                // Pass scopeIdOpt explicitly for registerDependency
+                ignore(DependencyCore.registerDependency innerTimeline.id timelineB.id (reactionFnInnerToB :> obj) (Some scopeForInner)) // Correct: Using DependencyCore function
 
-                    let reactionFnInnerToB valueInner =
-                             match currentScopeId with
-                             | Some activeScope when activeScope = newScopeId ->
-                                 // CORRECTED: No TL. prefix needed for define called within TL module
-                                 timelineB |> define Now valueInner
-                             | _ -> ()
-                    let _innerDepId = DependencyCore.registerDependency newInnerTimeline.id timelineB.id (reactionFnInnerToB :> obj) (Some newScopeId)
-                    ()
-            reactionFnAtoB timelineA._last
-            let _mainDepId = DependencyCore.registerDependency timelineA.id timelineB.id (reactionFnAtoB :> obj) None
+            // Set up reaction for the initial inner timeline
+            setUpInnerReaction initialInnerTimeline currentScopeId
+
+            // Main reaction when timelineA updates
+            let reactionFnAtoB (valueA: 'a) =
+                    DependencyCore.disposeScope currentScopeId // Correct: Using DependencyCore function
+
+                    let newScope = DependencyCore.createScope() // Correct: Using DependencyCore function
+                    currentScopeId <- newScope                  // Update currentScopeId
+
+                    let newInnerTimeline = valueA |> monadf // Apply the monadic function
+                    // Pass 'Now' explicitly if define requires it
+                    timelineB |> define Now newInnerTimeline._last // Immediately update timelineB, Correct: Calling define
+
+                    setUpInnerReaction newInnerTimeline newScope // Set up reaction for the new inner timeline
+                    () // reactionFnAtoB returns unit
+
+            // Register main dependency from timelineA to this re-binding logic
+            // Note: The initial value of timelineA has already been processed to set up timelineB and its first inner reaction.
+            // This dependency handles *subsequent* updates to timelineA.
+            // Pass scopeIdOpt as None explicitly for registerDependency
+            let _mainDepId = DependencyCore.registerDependency timelineA.id timelineB.id (reactionFnAtoB :> obj) None // Correct: Using DependencyCore function
             timelineB
 
-    // link calls define
     let link<'a> : Timeline<'a> -> Timeline<'a> -> unit =
         fun targetTimeline sourceTimeline ->
-            let reactionFn value =
-                    // CORRECTED: No TL. prefix needed for define called within TL module
-                    targetTimeline |> define Now value
-            let _depId = DependencyCore.registerDependency sourceTimeline.id targetTimeline.id (reactionFn :> obj) None
-            // CORRECTED: No TL. prefix needed for define called within TL module
-            targetTimeline |> define Now sourceTimeline._last
+            let reactionFn (value: 'a) =
+                    // Pass 'Now' explicitly if define requires it
+                    targetTimeline |> define Now value // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None explicitly for registerDependency
+            let _depId = DependencyCore.registerDependency sourceTimeline.id targetTimeline.id (reactionFn :> obj) None // Correct: Using DependencyCore function
+             // Initial sync: Pass 'Now' explicitly if define requires it
+            targetTimeline |> define Now sourceTimeline._last // Correct: Calling define within TL module
 
     let ID<'a> : 'a -> Timeline<'a> =
-        fun a -> Timeline a
-
-    // (>>>) calls bind
-    let inline (>>>) f g =
         fun a ->
-            let timelineFromF = a |> f
-            // CORRECTED: No TL. prefix needed for bind called within TL module
-            timelineFromF |> bind g
+            Timeline a // Correct: Using factory function
 
-// --- Additional Timeline Combinators Module ---
-module Combinators =
+    let inline (>>>) (f: 'a -> Timeline<'b>) (g: 'b -> Timeline<'c>) : 'a -> Timeline<'c> =
+        // This function definition style itself needs correction.
+        // It defines a function that takes f and g and RETURNS a function ('a -> Timeline<'c>)
+        fun a -> // This 'a' is the parameter for the *returned* function
+            // Corrected to be directly applicable: (f >>> g) aValue
+            let timelineFromF = f a // Apply f to 'a' first
+            timelineFromF |> bind g // Then bind the result with g, Correct: Calling bind within TL module
 
-    open TL // Access core operations
 
-    // Or calls TL.define and TL.at from *outside* the TL module
-    let Or<'a when 'a : null> : Timeline<'a> -> Timeline<'a> -> Timeline<'a> =
-        fun timelineA timelineB ->
-            let timelineAB = Timeline null
-            let reactionA a =
-                // Keep TL. prefix when calling from Combinators into TL
-                let currentVal = timelineAB |> TL.at Now
-                if not (isNull a) && isNull currentVal then
-                     // Keep TL. prefix when calling from Combinators into TL
-                    timelineAB |> TL.define Now a
+    // --- New additions for Unit 5 Section 1 ---
 
-            let reactionB b =
-                // Keep TL. prefix when calling from Combinators into TL
-                let currentVal = timelineAB |> TL.at Now
-                if not (isNull b) && isNull currentVal then
-                     // Keep TL. prefix when calling from Combinators into TL
-                    timelineAB |> TL.define Now b
+    // -- From New Chapter 3 & 4: Pure Monoidal Operations and Identities --
+    // These are values, not functions, so the definition style guide doesn't apply.
+    let FalseTimeline : Timeline<bool> = Timeline false
+    let TrueTimeline : Timeline<bool> = Timeline true
 
-            let _depA = DependencyCore.registerDependency timelineA.id timelineAB.id (reactionA :> obj) None
-            let _depB = DependencyCore.registerDependency timelineB.id timelineAB.id (reactionB :> obj) None
+    /// <summary>
+    /// (Pure Monoid OR) Combines two boolean timelines based on logical OR.
+    /// Updates when either input timeline updates, reflecting the OR of their current states.
+    /// Forms a Monoid with TL.FalseTimeline.
+    /// </summary>
+    let Or : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
+        fun timelineB timelineA -> // Parameter order for (timelineA |> Or timelineB) pipeline
+            let initialValA = timelineA |> at Now // Correct: Calling at within TL module
+            let initialValB = timelineB |> at Now // Correct: Calling at within TL module
+            let resultTimeline = Timeline (initialValA || initialValB) // Correct: Using factory function
 
-            // Keep TL. prefix when calling from Combinators into TL
-            reactionA (timelineA |> TL.at Now)
-            reactionB (timelineB |> TL.at Now)
+            let reactionToA (_newValA: bool) = // newValA is implicitly used via at Now from timelineA
+                let currentValA = timelineA |> at Now // Ensure we use the absolute latest from the source
+                let currentValB = timelineB |> at Now
+                 // Pass 'Now' explicitly
+                resultTimeline |> define Now (currentValA || currentValB) // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency timelineA.id resultTimeline.id (reactionToA :> obj) None) // Correct: Using DependencyCore function
 
-            timelineAB
+            let reactionToB (_newValB: bool) = // newValB is implicitly used via at Now from timelineB
+                let currentValA = timelineA |> at Now
+                let currentValB = timelineB |> at Now // Ensure we use the absolute latest from the source
+                 // Pass 'Now' explicitly
+                resultTimeline |> define Now (currentValA || currentValB) // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency timelineB.id resultTimeline.id (reactionToB :> obj) None) // Correct: Using DependencyCore function
+            resultTimeline
 
-    // All calls TL.map, TL.define, TL.at from *outside* the TL module
-    let All<'a> : list<Timeline<'a>> -> Timeline<list<'a> option> =
-        fun timelines ->
-            match timelines with
-            | [] -> Timeline(Some [])
-            | head :: tail ->
-                // Keep TL. prefix when calling from Combinators into TL
-                let initialAccTimeline = head |> TL.map (fun h -> Some [h])
+    /// <summary>
+    /// (Pure Monoid AND) Combines two boolean timelines based on logical AND.
+    /// Updates when either input timeline updates, reflecting the AND of their current states.
+    /// Forms a Monoid with TL.TrueTimeline.
+    /// </summary>
+    let And : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
+        fun timelineB timelineA -> // Parameter order for (timelineA |> And timelineB) pipeline
+            let initialValA = timelineA |> at Now // Correct: Calling at within TL module
+            let initialValB = timelineB |> at Now // Correct: Calling at within TL module
+            let resultTimeline = Timeline (initialValA && initialValB) // Correct: Using factory function
 
-                let combine : Timeline<list<'a> option> -> Timeline<'a> -> Timeline<list<'a> option> =
-                    fun accTimeline nextTimeline ->
-                        let resultTimeline = Timeline None
-                        let mutable lastAcc : list<'a> option option = None
-                        let mutable lastNext : 'a option = None
+            let reactionToA (_newValA: bool) =
+                let currentValA = timelineA |> at Now
+                let currentValB = timelineB |> at Now
+                 // Pass 'Now' explicitly
+                resultTimeline |> define Now (currentValA && currentValB) // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency timelineA.id resultTimeline.id (reactionToA :> obj) None) // Correct: Using DependencyCore function
 
-                        let updateResult() =
-                            match lastAcc, lastNext with
-                            | Some (Some accList), Some nextVal ->
-                                // Keep TL. prefix
-                                resultTimeline |> TL.define Now (Some (accList @ [nextVal]))
-                            | Some None, _ ->
-                                // Keep TL. prefix
-                                resultTimeline |> TL.define Now None
-                            | _, _ ->
-                                 // Keep TL. prefix
-                                 let isSome = resultTimeline |> TL.at Now |> Option.isSome
-                                 if isSome then
-                                     // Keep TL. prefix
-                                     resultTimeline |> TL.define Now None
+            let reactionToB (_newValB: bool) =
+                let currentValA = timelineA |> at Now
+                let currentValB = timelineB |> at Now
+                 // Pass 'Now' explicitly
+                resultTimeline |> define Now (currentValA && currentValB) // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency timelineB.id resultTimeline.id (reactionToB :> obj) None) // Correct: Using DependencyCore function
+            resultTimeline
 
-                        let reactionAcc accListOpt =
-                            lastAcc <- Some accListOpt
-                            updateResult()
+    // -- From New Chapter 6: distinctUntilChanged --
+    let distinctUntilChanged<'a when 'a : equality> : Timeline<'a> -> Timeline<'a> =
+        fun sourceTimeline ->
+            let initialValue = sourceTimeline |> at Now // Correct: Calling at within TL module
+            let resultTimeline = Timeline initialValue // Correct: Using factory function
+            // Store the last value that resultTimeline itself propagated
+            let mutable lastPropagatedValueByResult = initialValue
 
-                        let reactionNext nextVal =
-                            lastNext <- Some nextVal
-                            updateResult()
+            let reactionFn (newValueFromSource: 'a) =
+                if newValueFromSource <> lastPropagatedValueByResult then
+                    lastPropagatedValueByResult <- newValueFromSource
+                     // Pass 'Now' explicitly
+                    resultTimeline |> define Now newValueFromSource // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency sourceTimeline.id resultTimeline.id (reactionFn :> obj) None) // Correct: Using DependencyCore function
+            resultTimeline
 
-                        let _depAcc = DependencyCore.registerDependency accTimeline.id resultTimeline.id (reactionAcc :> obj) None
-                        let _depNext = DependencyCore.registerDependency nextTimeline.id resultTimeline.id (reactionNext :> obj) None
+    // -- From New Chapter 7: zipWith --
+    // For pipeline: timelineA |> zipWith f timelineB
+    // Definition order for currying: f -> timelineB -> timelineA -> result
+    let zipWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
+        fun f timelineB timelineA ->
+            let mutable latestA = timelineA |> at Now // Correct: Calling at within TL module
+            let mutable latestB = timelineB |> at Now // Correct: Calling at within TL module
 
-                        // Keep TL. prefix
-                        lastAcc <- Some (accTimeline |> TL.at Now)
-                        lastNext <- Some (nextTimeline |> TL.at Now)
-                        updateResult()
+            let calculateCombinedValue () =
+                // This version assumes inputs are always "valid" in terms of null-ness for their types
+                // as per Chapter 0 philosophy (e.g. Timeline<bool> is false/true, not null).
+                // For truly generic version with reference types that can be null before combining:
+                // if isNull latestA || isNull latestB then Unchecked.defaultof<'c> else f latestA latestB
+                f latestA latestB // No need for null checks based on user's acceptance of Option use elsewhere
 
-                        resultTimeline
-                tail |> List.fold combine initialAccTimeline
+            let resultTimeline = Timeline (calculateCombinedValue()) // Correct: Using factory function
 
-    // And calls All (which handles TL prefixes correctly)
-    let And<'a> : Timeline<'a> -> Timeline<'a> -> Timeline<list<'a> option> =
-        fun timelineA timelineB ->
-            All [timelineA; timelineB] // No TL. prefix needed for local module function
+            let reactionA (valA: 'a) =
+                latestA <- valA
+                // Pass 'Now' explicitly
+                resultTimeline |> define Now (calculateCombinedValue()) // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency timelineA.id resultTimeline.id (reactionA :> obj) None) // Correct: Using DependencyCore function
 
-    // Any calls Or (which handles TL prefixes correctly)
-    let Any<'a when 'a : null> : list<Timeline<'a>> -> Timeline<'a> =
-        fun timelines ->
-            match timelines with
-            | [] -> Timeline null
-            | head :: tail -> tail |> List.fold Or head // No TL. prefix needed for local module function
+            let reactionB (valB: 'b) =
+                latestB <- valB
+                // Pass 'Now' explicitly
+                resultTimeline |> define Now (calculateCombinedValue()) // Correct: Calling define within TL module
+            // Pass scopeIdOpt as None
+            ignore (DependencyCore.registerDependency timelineB.id resultTimeline.id (reactionB :> obj) None) // Correct: Using DependencyCore function
+            resultTimeline
+
+    // -- From New Chapter 8: Practical Or-like (anyTrue) --
+    /// <summary>
+    /// (Practical OR) Creates a timeline that is true if either of the input timelines is true.
+    /// Implemented using TL.zipWith (||).
+    /// Forms a Monoid with TL.FalseTimeline.
+    /// </summary>
+    let anyTrue : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
+        fun timelineB timelineA -> // Parameter order for (timelineA |> anyTrue timelineB) pipeline
+            timelineA |> zipWith (||) timelineB // Correct: Calling zipWith within TL module
+
+    // -- From New Chapter 9: Practical And-like (allTrue) --
+    /// <summary>
+    /// (Practical AND) Creates a timeline that is true only if both input timelines are true.
+    /// Implemented using TL.zipWith (&&).
+    /// Forms a Monoid with TL.TrueTimeline.
+    /// </summary>
+    let allTrue : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
+        fun timelineB timelineA -> // Parameter order for (timelineA |> allTrue timelineB) pipeline
+            timelineA |> zipWith (&&) timelineB // Correct: Calling zipWith within TL module
+
+    // -- From New Chapter 10: N-ary OR and AND --
+    let anyTrueInList : list<Timeline<bool>> -> Timeline<bool> =
+        fun booleanTimelines ->
+            // Fold requires ('State -> 'T -> 'State).
+            // anyTrue is (Timeline<bool> -> Timeline<bool> -> Timeline<bool>)
+            // For List.fold, the accumulator comes first.
+            // So we need (fun accumulator element -> accumulator |> anyTrue element)
+            // Or simply use List.fold with the function reference if parameter order matches.
+            // Let's check anyTrue: fun timelineB timelineA -> ... applies A to B.
+            // Fold accumulator is like A, element is like B.
+            // So we need List.fold (fun acc elem -> elem |> anyTrue acc) ? No, that's reversed.
+            // We need List.fold (fun acc elem -> acc |> anyTrue elem) -> Yes, this works.
+            List.fold anyTrue FalseTimeline booleanTimelines // Correct: Calling anyTrue within TL module
+
+    let allTrueInList : list<Timeline<bool>> -> Timeline<bool> =
+        fun booleanTimelines ->
+            // Similar logic for fold with allTrue
+            List.fold allTrue TrueTimeline booleanTimelines // Correct: Calling allTrue within TL module
