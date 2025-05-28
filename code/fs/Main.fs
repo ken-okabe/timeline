@@ -102,7 +102,7 @@ let successStatusTimelines: list<Timeline<bool>> =
 //    Aggregate these boolean success timelines using TL.allTrueInList.
 //    This timeline will be true only if all individual successStatusTimelines are true.
 let allRequestsInitiallySucceededSignal: Timeline<bool> =
-    successStatusTimelines |> TL.allTrueInList // Explicit TL.allTrueInList
+    successStatusTimelines |> TL.all // Explicit TL.allTrueInList
 
 // 5. Optimize the final aggregated signal to propagate only on actual changes.
 let finalAllSuccessSignal: Timeline<bool> =

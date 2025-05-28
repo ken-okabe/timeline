@@ -1,6 +1,4 @@
-import { Timeline } from './timeline';
-import { isNullT, Or, And } from './timelineEx';
-import { AndResult } from './timelineEx';
+import { Timeline, Now, isNull } from './timeline';
 
 const log = <A>(a: A): void => console.log(a);
 
@@ -15,8 +13,8 @@ counterTimeline
 // logs: "Counter changed to: 0"
 
 // Update the timeline value
-counterTimeline.next(1); // logs: "Counter changed to: 1"
-counterTimeline.next(2); // logs: "Counter changed to: 2"
+counterTimeline.define(Now, 1); // logs: "Counter changed to: 1"
+counterTimeline.define(Now, 2); // logs: "Counter changed to: 2"
 
 console.log("--------------------------------------------");
 // Example 1: String Timeline
@@ -28,17 +26,17 @@ const timeline = Timeline<string | null>(null);
 // This behavior is similar to Promise .then() method
 timeline
     .map(value => {
-        if (isNullT(value)) {
+        if (isNull(value)) {
             // do nothing on Null
         } else {
             log(value);
         }
     });
 
-timeline.next("Hello");
-timeline.next("World!");
-timeline.next("TypeScript");
-timeline.next(null);
+timeline.define(Now, "Hello");
+timeline.define(Now, "World!");
+timeline.define(Now, "TypeScript");
+timeline.define(Now, null);
 
 console.log("--------------------------------------------");
 // Example 2: Integer Object Timeline
@@ -50,10 +48,10 @@ timelineNumber
         log(value);
     });
 
-timelineNumber.next(1);
-timelineNumber.next(2);
-timelineNumber.next(3);
-timelineNumber.next(null);
+timelineNumber.define(Now, 1);
+timelineNumber.define(Now, 2);
+timelineNumber.define(Now, 3);
+timelineNumber.define(Now, null);
 
 console.log("--------------------------------------------");
 // Example 3: Command Object Timeline
@@ -70,84 +68,16 @@ const timelineObj = Timeline<CommandObj | null>(null);
 // This behavior is similar to Promise .then() method
 timelineObj
     .map((value) => {
-        if (isNullT(value)) {
+        if (isNull(value)) {
             // do nothing on Null
         } else {
             log(value);
         }
     });
 
-timelineObj.next({ cmd: "text", msg: "Hello" });
-timelineObj.next({ cmd: "text", msg: "Bye" });
-timelineObj.next(null); // do nothing
+timelineObj.define(Now, { cmd: "text", msg: "Hello" });
+timelineObj.define(Now, { cmd: "text", msg: "Bye" });
+timelineObj.define(Now, null); // do nothing
 
 console.log("--------------------------------------------");
-
-let timelineA: Timeline<any>
-    = Timeline<object | AndResult<object> | null>(null);
-let timelineB: Timeline<any>
-    = Timeline<object | AndResult<object> | null>(null);
-let timelineC: Timeline<any>
-    = Timeline<object | AndResult<object> | null>(null);
-
-let timelineAB =
-     And(timelineA, timelineB);
-let timelineABC =
-     And(timelineAB, timelineC);
-
-timelineABC.map(log);  // No need for |> ignore equivalent in TS
-
-timelineA.next("A");
-timelineB.next("B");
-timelineC.next("C");
-
-console.log("--------------------------------------------");
-
-
-// Timeline bind sequence
-const timeline0 = Timeline<string | null>(null);
-const timeline1 = Timeline<string | null>(null);
-const timeline2 = Timeline<string | null>(null);
-const timeline3 = Timeline<string | null>(null);
-
-// Chain of bindings with setTimeout
-timeline0
-  .bind(value => {
-    if (isNullT(value)) {
-      // Do nothing if value is null
-    } else {
-      setTimeout(() => {
-        const msg = "Hello";
-        log(msg);
-        timeline1.next(msg);
-      }, 1000);
-    }
-    return timeline1;
-  }) // Return timeline1 directy to chain the next bind
-  .bind(value => {
-    if (isNullT(value)) {
-      // Do nothing if value is null
-    } else {
-      setTimeout(() => {
-        const msg =  value + " World!";
-        log(msg);
-        timeline2.next(msg);
-      }, 2000);
-    }
-    return timeline2;
-  }) // Return timeline2 directy to chain the next bind
-  .bind(value => {
-    if (isNullT(value)) {
-      // Do nothing if value is null
-    } else {
-      setTimeout(() => {
-        const msg = value + " Sequence ends.";
-        log(msg);
-        timeline3.next(msg);
-      }, 1000);
-    }
-    return timeline3;
-  }); // Return timeline3 directy to chain the next bind
-
-// Start the sequence to trigger the first bind
-timeline0.next("Start!");
+ 
