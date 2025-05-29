@@ -133,15 +133,19 @@ module TL =
             callbacks
             |> List.iter (fun (depId, callbackObj) ->
                 try
-                    let callback = callbackObj :?> ('a -> unit)
-                    callback value
+                    if callbackObj = null then
+                        printfn "Warning: Callback object is null for DependencyId %A" depId
+                    else
+                        try
+                            let callback = callbackObj :?> ('a -> unit)
+                            callback value
+                        with
+                        | ex ->
+                            printfn "Error/Warning during callback for DependencyId %A. Input value (%%A): %A. JS Error: %s" depId value ex.Message
                 with
-                | :? System.InvalidCastException ->
-                    printfn "Warning: Callback type mismatch for DependencyId %A. Timeline Value Type: %s. Callback expected different input." depId (value.GetType().Name)
                 | ex ->
-                    printfn "Error executing callback for DependencyId %A: %s" depId ex.Message
+                    printfn "Unexpected error during callback iteration for DependencyId %A: %s" depId ex.Message
             )
-
     // Raw version: passes null to f if timelineA holds null
     let map<'a, 'b> : ('a -> 'b) -> Timeline<'a> -> Timeline<'b> =
         fun f timelineA ->
