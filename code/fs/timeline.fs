@@ -1,8 +1,8 @@
 module Timeline
 
 // --- Now Type Definition ---
-type Now = Now of string
-let Now = Now "Conceptual time coordinate"
+type NowType = NOW of string
+let Now = NOW "Conceptual time coordinate"
 
 // --- Core System Abstractions ---
 type TimelineId = System.Guid
@@ -122,11 +122,11 @@ module TL =
         | null -> true
         | _ -> false
 
-    let at<'a> : Now -> Timeline<'a> -> 'a =
+    let at<'a> : NowType -> Timeline<'a> -> 'a =
         fun _now timeline ->
             timeline._last
 
-    let define<'a> : Now -> 'a -> Timeline<'a> -> unit =
+    let define<'a> : NowType -> 'a -> Timeline<'a> -> unit =
         fun _now value timeline ->
             timeline._last <- value
             let callbacks = timeline._id |> DependencyCore.getCallbacks
@@ -209,10 +209,10 @@ module TL =
             let initialValueA = timelineA |> at Now
             let initialInnerTimeline =
                 if isNull initialValueA then
-                    Timeline (Unchecked.defaultof<'b>) 
+                    Timeline (Unchecked.defaultof<'b>)
                 else
                     monadf initialValueA
-            
+
             let timelineB = Timeline (initialInnerTimeline |> at Now)
             let mutable currentScopeId : ScopeId = DependencyCore.createScope()
 
@@ -222,7 +222,7 @@ module TL =
                         if currentScopeId = scopeForInner then
                             timelineB |> define Now valueInner
                 DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) |> ignore
-            
+
             setUpInnerReaction initialInnerTimeline currentScopeId
 
             let reactionFnAtoB : 'a -> unit =
@@ -245,12 +245,12 @@ module TL =
         fun f timelineB timelineA ->
             let mutable latestA = timelineA |> at Now
             let mutable latestB = timelineB |> at Now
-            
+
             let resultTimeline = Timeline (f latestA latestB)
 
             let reactionA (valA: 'a) : unit =
                 latestA <- valA
-                resultTimeline |> define Now (f latestA latestB) 
+                resultTimeline |> define Now (f latestA latestB)
             DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None |> ignore
 
             let reactionB (valB: 'b) : unit =
@@ -267,7 +267,7 @@ module TL =
 
             let calculateCombinedValue () =
                 if isNull latestA || isNull latestB then
-                    Unchecked.defaultof<'c> 
+                    Unchecked.defaultof<'c>
                 else
                     f latestA latestB
 
@@ -314,7 +314,7 @@ module TL =
                     resultTimeline |> define Now newValueFromSource
             DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (reactionFn :> obj) None |> ignore
             resultTimeline
-            
+
     // Logical operations and constants
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
@@ -343,14 +343,14 @@ module TL =
     //     fun timelineB timelineA ->
     //         let initialValA = timelineA |> at Now
     //         let initialValB = timelineB |> at Now
-    //         let resultTimeline = Timeline (initialValA || initialValB) 
+    //         let resultTimeline = Timeline (initialValA || initialValB)
 
-    //         let reactionToA (newValA: bool) : unit = 
+    //         let reactionToA (newValA: bool) : unit =
     //             let currentValB = timelineB |> at Now
     //             resultTimeline |> define Now (newValA || currentValB)
     //         DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionToA :> obj) None |> ignore
 
-    //         let reactionToB (newValB: bool) : unit = 
+    //         let reactionToB (newValB: bool) : unit =
     //             let currentValA = timelineA |> at Now
     //             resultTimeline |> define Now (currentValA || newValB)
     //         DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionToB :> obj) None |> ignore
