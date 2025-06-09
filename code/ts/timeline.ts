@@ -220,8 +220,8 @@ const nBind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline
     return timelineB;
 };
 
-// New "raw" zipWith: f is called directly, f is responsible for handling nulls
-const zipWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>) => (timelineA: Timeline<A>): Timeline<C> => {
+// New "raw" combineLatestWith: f is called directly, f is responsible for handling nulls
+const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>) => (timelineA: Timeline<A>): Timeline<C> => {
     let latestA = timelineA.at(Now); // Call interface method
     let latestB = timelineB.at(Now); // Call interface method
     const resultTimeline_instance = Timeline(f(latestA, latestB));
@@ -240,8 +240,8 @@ const zipWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>
     return resultTimeline_instance;
 };
 
-// Nullable-aware nZipWith (original zipWith behavior from base code)
-const nZipWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>) => (timelineA: Timeline<A>): Timeline<C | null> => {
+// Nullable-aware nCombineLatestWith (original combineLatestWith behavior from base code)
+const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>) => (timelineA: Timeline<A>): Timeline<C | null> => {
     let latestA = timelineA.at(Now); // Call interface method
     let latestB = timelineB.at(Now); // Call interface method
 
@@ -289,14 +289,14 @@ const distinctUntilChanged = <A>(sourceTimeline: Timeline<A>): Timeline<A> => {
     return resultTimeline_instance;
 };
 
-// Or and And use nZipWith for robust boolean logic
+// Or and And use nCombineLatestWith for robust boolean logic
 const Or = (timelineB: Timeline<boolean>) => (timelineA: Timeline<boolean>): Timeline<boolean> => {
-    const zipResult = nZipWith<boolean, boolean, boolean>((a, b) => a || b)(timelineB)(timelineA);
+    const zipResult = nCombineLatestWith<boolean, boolean, boolean>((a, b) => a || b)(timelineB)(timelineA);
     return map<boolean | null, boolean>(value => value === null ? false : value)(zipResult);
 };
 
 const And = (timelineB: Timeline<boolean>) => (timelineA: Timeline<boolean>): Timeline<boolean> => {
-    const zipResult = nZipWith<boolean, boolean, boolean>((a, b) => a && b)(timelineB)(timelineA);
+    const zipResult = nCombineLatestWith<boolean, boolean, boolean>((a, b) => a && b)(timelineB)(timelineA);
     return map<boolean | null, boolean>(value => value === null ? false : value)(zipResult);
 };
 
@@ -312,12 +312,12 @@ export interface Timeline<A> {
     // Raw versions
     map<B>(f: (value: A) => B): Timeline<B>;
     bind<B>(monadf: (value: A) => Timeline<B>): Timeline<B>;
-    zipWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C>;
+    combineLatestWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C>;
 
     // Nullable-aware versions
     nMap<B>(f: (value: A) => B): Timeline<B | null>;
     nBind<B>(monadf: (value: A) => Timeline<B>): Timeline<B | null>;
-    nZipWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C | null>;
+    nCombineLatestWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C | null>;
 
     link(targetTimeline: Timeline<A>): void;
     distinctUntilChanged(): Timeline<A>;
@@ -345,8 +345,8 @@ export const Timeline = <A>(initialValue: A): Timeline<A> => ({
     bind: function<B>(this: Timeline<A>, monadf: (valueA: A) => Timeline<B>): Timeline<B> {
         return bind<A, B>(monadf)(this);
     },
-    zipWith: function<B, C>(this: Timeline<A>, f: (valA: A, valB: B) => C, timelineB_param: Timeline<B>): Timeline<C> {
-        return zipWith<A, B, C>(f)(timelineB_param)(this);
+    combineLatestWith: function<B, C>(this: Timeline<A>, f: (valA: A, valB: B) => C, timelineB_param: Timeline<B>): Timeline<C> {
+        return combineLatestWith<A, B, C>(f)(timelineB_param)(this);
     },
 
     // Nullable-aware versions
@@ -356,8 +356,8 @@ export const Timeline = <A>(initialValue: A): Timeline<A> => ({
     nBind: function<B>(this: Timeline<A>, monadf: (valueA: A) => Timeline<B>): Timeline<B | null> {
         return nBind<A, B>(monadf)(this);
     },
-    nZipWith: function<B, C>(this: Timeline<A>, f: (valA: A, valB: B) => C, timelineB_param: Timeline<B>): Timeline<C | null> {
-        return nZipWith<A, B, C>(f)(timelineB_param)(this);
+    nCombineLatestWith: function<B, C>(this: Timeline<A>, f: (valA: A, valB: B) => C, timelineB_param: Timeline<B>): Timeline<C | null> {
+        return nCombineLatestWith<A, B, C>(f)(timelineB_param)(this);
     },
 
     link: function(this: Timeline<A>, targetTimeline: Timeline<A>): void {

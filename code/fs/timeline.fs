@@ -245,7 +245,7 @@ module TL =
             timelineB
 
     // Raw version: f is called even if latestA or latestB is null
-    let zipWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
+    let combineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
         fun f timelineB timelineA ->
             let mutable latestA = timelineA |> at Now
             let mutable latestB = timelineB |> at Now
@@ -263,8 +263,8 @@ module TL =
             DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None |> ignore
             resultTimeline
 
-    // Nullable-aware version (original zipWith behavior)
-    let nZipWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
+    // Nullable-aware version (original combineLatestWith behavior)
+    let nCombineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
         fun f timelineB timelineA ->
             let mutable latestA = timelineA |> at Now
             let mutable latestB = timelineB |> at Now
@@ -323,14 +323,14 @@ module TL =
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
 
-    // Or and And use nZipWith for robust boolean logic
+    // Or and And use nCombineLatestWith for robust boolean logic
     let Or : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
         fun timelineB timelineA ->
-            timelineA |> nZipWith (||) timelineB
+            timelineA |> nCombineLatestWith (||) timelineB
 
     let And : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
         fun timelineB timelineA ->
-            timelineA |> nZipWith (&&) timelineB
+            timelineA |> nCombineLatestWith (&&) timelineB
 
     let any : list<Timeline<bool>> -> Timeline<bool> =
         fun booleanTimelines ->
@@ -341,38 +341,3 @@ module TL =
         fun booleanTimelines ->
             if List.isEmpty booleanTimelines then TrueTimeline
             else List.fold (fun acc elem -> acc |> And elem) TrueTimeline booleanTimelines
-
-    // Naive monoidal operations (kept for conceptual completeness as per earlier chapters)
-    // let naiveOr : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
-    //     fun timelineB timelineA ->
-    //         let initialValA = timelineA |> at Now
-    //         let initialValB = timelineB |> at Now
-    //         let resultTimeline = Timeline (initialValA || initialValB)
-
-    //         let reactionToA (newValA: bool) : unit =
-    //             let currentValB = timelineB |> at Now
-    //             resultTimeline |> define Now (newValA || currentValB)
-    //         DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionToA :> obj) None |> ignore
-
-    //         let reactionToB (newValB: bool) : unit =
-    //             let currentValA = timelineA |> at Now
-    //             resultTimeline |> define Now (currentValA || newValB)
-    //         DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionToB :> obj) None |> ignore
-    //         resultTimeline
-
-    // let naiveAnd : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
-    //     fun timelineB timelineA ->
-    //         let initialValA = timelineA |> at Now
-    //         let initialValB = timelineB |> at Now
-    //         let resultTimeline = Timeline (initialValA && initialValB)
-
-    //         let reactionToA (newValA: bool) : unit =
-    //             let currentValB = timelineB |> at Now
-    //             resultTimeline |> define Now (newValA && currentValB)
-    //         DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionToA :> obj) None |> ignore
-
-    //         let reactionToB (newValB: bool) : unit =
-    //             let currentValA = timelineA |> at Now
-    //             resultTimeline |> define Now (currentValA && newValB)
-    //         DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionToB :> obj) None |> ignore
-    //         resultTimeline
