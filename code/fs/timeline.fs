@@ -70,23 +70,19 @@ module internal DependencyCore =
                 | None -> ()
             | false, _ -> ()
 
-    // Updated disposeScope logic
     let disposeScope : ScopeId -> unit =
         fun scopeId ->
             match scopeIndex.TryGetValue(scopeId) with
             | true, depIds ->
                 let idsToRemove = depIds |> List.ofSeq // Avoid modifying collection while iterating
-                idsToRemove |> List.iter removeDependency // removeDependency might modify scopeIndex
+                idsToRemove |> List.iter removeDependency
 
-                // Re-check the scope's status in scopeIndex after all removeDependency calls
                 match scopeIndex.TryGetValue(scopeId) with
                 | true, remainingDepsInScopeList ->
                     if remainingDepsInScopeList.Count = 0 then
-                        // If the scope still exists and its list is now empty, remove the scope itself
                         scopeIndex.Remove(scopeId) |> ignore
-                    // else: If list is not empty (should not happen if all deps were in idsToRemove), do nothing.
-                | false, _ -> () // Key no longer exists, already removed by removeDependency (via removeFromListDict)
-            | false, _ -> () // ScopeId did not exist in scopeIndex initially
+                | false, _ -> ()
+            | false, _ -> ()
 
     let getCallbacks : TimelineId -> list<DependencyId * obj> =
         fun sourceId ->
@@ -112,8 +108,6 @@ let Timeline<'a> : 'a -> Timeline<'a> =
     fun initialValue ->
         let newId = DependencyCore.generateTimelineId()
         { _id = newId; _last = initialValue }
-
-// --- Global Helper ---
 
 // --- Core Timeline Operations Module ---
 module TL =
@@ -146,7 +140,7 @@ module TL =
                 | ex ->
                     printfn "Unexpected error during callback iteration for DependencyId %A: %s" depId ex.Message
             )
-    // Raw version: passes null to f if timelineA holds null
+
     let map<'a, 'b> : ('a -> 'b) -> Timeline<'a> -> Timeline<'b> =
         fun f timelineA ->
             let initialB = f (timelineA |> at Now)
@@ -158,7 +152,6 @@ module TL =
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None |> ignore
             timelineB
 
-    // Nullable-aware version: f is not called if timelineA holds null; resultTimeline holds defaultof<'b>
     let nMap<'a, 'b> : ('a -> 'b) -> Timeline<'a> -> Timeline<'b> =
         fun f timelineA ->
             let currentValueA = timelineA |> at Now
@@ -179,7 +172,6 @@ module TL =
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None |> ignore
             timelineB
 
-    // Raw version: passes null to monadf if timelineA holds null
     let bind<'a, 'b> : ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b> =
         fun monadf timelineA ->
             let initialInnerTimeline = monadf (timelineA |> at Now)
@@ -206,14 +198,12 @@ module TL =
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None |> ignore
             timelineB
 
-    // Nullable-aware version: monadf is not called if timelineA holds null;
-    // resultTimeline holds Timeline (Unchecked.defaultof<'b>)
     let nBind<'a, 'b> : ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b> =
         fun monadf timelineA ->
             let initialValueA = timelineA |> at Now
             let initialInnerTimeline =
                 if isNull initialValueA then
-                    Timeline (Unchecked.defaultof<'b>)
+                    Timeline Unchecked.defaultof<'b>
                 else
                     monadf initialValueA
 
@@ -236,7 +226,7 @@ module TL =
                     currentScopeId <- newScope
                     let newInnerTimeline =
                         if isNull valueA then
-                            Timeline (Unchecked.defaultof<'b>)
+                            Timeline Unchecked.defaultof<'b>
                         else
                             monadf valueA
                     timelineB |> define Now (newInnerTimeline |> at Now)
@@ -244,58 +234,82 @@ module TL =
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None |> ignore
             timelineB
 
-    // Raw version: f is called even if latestA or latestB is null
-    let combineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
-        fun f timelineB timelineA ->
-            let mutable latestA = timelineA |> at Now
-            let mutable latestB = timelineB |> at Now
-
-            let resultTimeline = Timeline (f latestA latestB)
-
-            let reactionA (valA: 'a) : unit =
-                latestA <- valA
-                resultTimeline |> define Now (f latestA latestB)
-            DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None |> ignore
-
-            let reactionB (valB: 'b) : unit =
-                latestB <- valB
-                resultTimeline |> define Now (f latestA latestB)
-            DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None |> ignore
-            resultTimeline
-
-    // Nullable-aware version (original combineLatestWith behavior)
-    let nCombineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'b> -> Timeline<'a> -> Timeline<'c> =
-        fun f timelineB timelineA ->
-            let mutable latestA = timelineA |> at Now
-            let mutable latestB = timelineB |> at Now
-
-            let calculateCombinedValue () =
-                if isNull latestA || isNull latestB then
-                    Unchecked.defaultof<'c>
-                else
-                    f latestA latestB
-
-            let resultTimeline = Timeline (calculateCombinedValue())
-
-            let reactionA (valA: 'a) : unit =
-                latestA <- valA
-                resultTimeline |> define Now (calculateCombinedValue())
-            DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None |> ignore
-
-            let reactionB (valB: 'b) : unit =
-                latestB <- valB
-                resultTimeline |> define Now (calculateCombinedValue())
-            DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None |> ignore
-            resultTimeline
-
-    // Other fundamental operations
     let link<'a> : Timeline<'a> -> Timeline<'a> -> unit =
         fun targetTimeline sourceTimeline ->
-            let reactionFn : 'a -> unit =
-                fun value ->
-                    targetTimeline |> define Now value
-            DependencyCore.registerDependency sourceTimeline._id targetTimeline._id (reactionFn :> obj) None |> ignore
-            targetTimeline |> define Now (sourceTimeline |> at Now)
+            sourceTimeline
+            |> map (fun value ->
+                targetTimeline |> define Now value
+            )
+            |> ignore
+
+    // Raw version: f is called even if latestA or latestB is null
+    let combineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'a> -> Timeline<'b> -> Timeline<'c> =
+        fun f timelineA timelineB ->
+            let initialA = timelineA |> at Now
+            let initialB = timelineB |> at Now
+            let resultTimeline = Timeline (f initialA initialB)
+
+            // timelineA updated
+            timelineA
+            |> map (fun newA ->
+                let latestB = timelineB |> at Now
+                resultTimeline |> define Now (f newA latestB)
+            )
+            |> ignore
+
+            // timelineB updated
+            timelineB
+            |> map (fun newB ->
+                let latestA = timelineA |> at Now
+                resultTimeline |> define Now (f latestA newB)
+            )
+            |> ignore
+
+            resultTimeline
+
+    // Nullable-aware version (This is the primary version used by other combinators)
+// Nullable-aware version: f is not called if latestA or latestB is null.
+    // The resultTimeline will hold Unchecked.defaultof<'c> in that case.
+    let nCombineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'a> -> Timeline<'b> -> Timeline<'c> =
+        fun f timelineA timelineB ->
+            // Perform a null-check for the initial value.
+            let initialA = timelineA |> at Now
+            let initialB = timelineB |> at Now
+            let initialResult =
+                if isNull initialA || isNull initialB then
+                    Unchecked.defaultof<'c>
+                else
+                    f initialA initialB
+
+            let resultTimeline = Timeline initialResult
+
+            // When timelineA updates, get the latest value from timelineB and perform a null-check.
+            timelineA
+            |> map (fun newA ->
+                let latestB = timelineB |> at Now
+                let newResult =
+                    if isNull newA || isNull latestB then
+                        Unchecked.defaultof<'c>
+                    else
+                        f newA latestB
+                resultTimeline |> define Now newResult
+            )
+            |> ignore
+
+            // When timelineB updates, get the latest value from timelineA and perform a null-check.
+            timelineB
+            |> map (fun newB ->
+                let latestA = timelineA |> at Now
+                let newResult =
+                    if isNull latestA || isNull newB then
+                        Unchecked.defaultof<'c>
+                    else
+                        f latestA newB
+                resultTimeline |> define Now newResult
+            )
+            |> ignore
+
+            resultTimeline
 
     let ID<'a> : 'a -> Timeline<'a> =
         fun a ->
@@ -304,7 +318,7 @@ module TL =
     let inline (>>>) (f: 'a -> Timeline<'b>) (g: 'b -> Timeline<'c>) : ('a -> Timeline<'c>) =
         fun a ->
             let timelineFromF = f a
-            timelineFromF |> bind g // Uses the raw bind
+            timelineFromF |> bind g
 
     let distinctUntilChanged<'a when 'a : equality> : Timeline<'a> -> Timeline<'a> =
         fun sourceTimeline ->
@@ -319,25 +333,19 @@ module TL =
             DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (reactionFn :> obj) None |> ignore
             resultTimeline
 
-    // Logical operations and constants
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
 
-    // Or and And use nCombineLatestWith for robust boolean logic
-    let Or : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
-        fun timelineB timelineA ->
-            timelineA |> nCombineLatestWith (||) timelineB
+    // Or and And now use the standard-order nCombineLatestWith
+    let Or (timelineA: Timeline<bool>) (timelineB: Timeline<bool>) : Timeline<bool> =
+        nCombineLatestWith (||) timelineA timelineB
 
-    let And : Timeline<bool> -> Timeline<bool> -> Timeline<bool> =
-        fun timelineB timelineA ->
-            timelineA |> nCombineLatestWith (&&) timelineB
+    let And (timelineA: Timeline<bool>) (timelineB: Timeline<bool>) : Timeline<bool> =
+        nCombineLatestWith (&&) timelineA timelineB
 
-    let any : list<Timeline<bool>> -> Timeline<bool> =
-        fun booleanTimelines ->
-            if List.isEmpty booleanTimelines then FalseTimeline
-            else List.fold (fun acc elem -> acc |> Or elem) FalseTimeline booleanTimelines
+    // any and all now use the standard-order functions directly with fold
+    let any (booleanTimelines: list<Timeline<bool>>) : Timeline<bool> =
+        List.fold Or FalseTimeline booleanTimelines
 
-    let all : list<Timeline<bool>> -> Timeline<bool> =
-        fun booleanTimelines ->
-            if List.isEmpty booleanTimelines then TrueTimeline
-            else List.fold (fun acc elem -> acc |> And elem) TrueTimeline booleanTimelines
+    let all (booleanTimelines: list<Timeline<bool>>) : Timeline<bool> =
+        List.fold And TrueTimeline booleanTimelines

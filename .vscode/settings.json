@@ -1,0 +1,37 @@
+{
+    "terminal.integrated.localEchoLatencyThreshold": -1,
+    "terminal.integrated.localEchoEnabled": "off",
+    "terminal.integrated.fontSize": 15,
+    "workbench.startupEditor": "none",
+    "editor.fontFamily": "JetBrains Mono, Menlo, Monaco, Courier New, monospace",
+    "editor.fontWeight": "normal",
+    "editor.lineHeight": 1.5,
+    "editor.letterSpacing": 0,
+    "debug.console.fontSize": 15,
+    "window.commandCenter": false,
+    "workbench.preferredLightColorTheme": "Solarized Dark",
+
+    "window.autoDetectColorScheme": true,
+    "workbench.layoutControl.enabled": false,
+    "inlineChat.mode": "preview",
+
+    "files.autoSave": "afterDelay",
+    "files.autoSaveDelay": 500,
+    "files.trimTrailingWhitespace": true,
+    "workbench.colorCustomizations": {
+        "terminal.background":"#002b36"
+    },
+    "editor.fontSize": 15,
+    "editor.codeLensFontSize": 15,
+    "editor.codeLensFontFamily":
+    "'Droid Sans Mono', 'monospace', monospace",
+    "FSharp.lineLens.enabled": "never",
+    "FSharp.inlayHints.typeAnnotations": false,
+    "FSharp.codeLenses.references.enabled": false,
+    "FSharp.fsac.parallelReferenceResolution": true,
+    "FSharp.showExplorerOnStartup": false,
+    "FSharp.showProjectExplorerIn": "explorer",
+    "FSharp.inlayHints.parameterNames": false,
+    "git.enableSmartCommit": true,
+
+}
