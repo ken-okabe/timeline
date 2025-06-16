@@ -242,6 +242,52 @@ module TL =
             )
             |> ignore
 
+    let scan<'state, 'input> (accumulator: 'state -> 'input -> 'state) (initialState: 'state) (sourceTimeline: Timeline<'input>) : Timeline<'state> =
+        // The state itself is managed by a separate, dedicated timeline.
+        let stateTimeline = Timeline initialState
+
+        // We use `map` on the source timeline to trigger updates to the state timeline.
+        sourceTimeline
+        |> map (fun input ->
+            // On each input, get the LATEST current state from the state timeline.
+            let currentState = stateTimeline |> at Now
+            // Calculate the new state.
+            let newState = accumulator currentState input
+            // Define the new state back onto the state timeline.
+            stateTimeline |> define Now newState
+        )
+        |> ignore // The Timeline<unit> returned by map is not needed.
+
+        // Return the timeline that holds the state.
+        stateTimeline
+
+    let distinctUntilChanged<'a when 'a : equality> (sourceTimeline: Timeline<'a>) : Timeline<'a> =
+        let initialValue = sourceTimeline |> at Now
+
+        // This is the public-facing timeline that will only contain distinct values.
+        let resultTimeline = Timeline initialValue
+
+        // This is a private, internal timeline that holds the state of the last value
+        // that was successfully propagated.
+        let lastPropagatedTimeline = Timeline initialValue
+
+        // We register a reaction on the source timeline using `map`.
+        sourceTimeline
+        |> map (fun currentValue ->
+            // For each new value from the source, get the state of the last propagated one.
+            let lastPropagatedValue = lastPropagatedTimeline |> at Now
+
+            // Only if the new value is different...
+            if currentValue <> lastPropagatedValue then
+                // ...do we update both our internal state timeline...
+                lastPropagatedTimeline |> define Now currentValue
+                // ...and the final result timeline.
+                resultTimeline |> define Now currentValue
+        )
+        |> ignore // The Timeline<unit> from map is not needed.
+
+        resultTimeline
+
     // Raw version: f is called even if latestA or latestB is null
     let combineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'a> -> Timeline<'b> -> Timeline<'c> =
         fun f timelineA timelineB ->
@@ -319,19 +365,6 @@ module TL =
         fun a ->
             let timelineFromF = f a
             timelineFromF |> bind g
-
-    let distinctUntilChanged<'a when 'a : equality> : Timeline<'a> -> Timeline<'a> =
-        fun sourceTimeline ->
-            let initialValue = sourceTimeline |> at Now
-            let resultTimeline = Timeline initialValue
-            let mutable lastPropagatedValueByResult = initialValue
-
-            let reactionFn (newValueFromSource: 'a) : unit =
-                if newValueFromSource <> lastPropagatedValueByResult then
-                    lastPropagatedValueByResult <- newValueFromSource
-                    resultTimeline |> define Now newValueFromSource
-            DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (reactionFn :> obj) None |> ignore
-            resultTimeline
 
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
