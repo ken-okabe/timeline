@@ -1,7 +1,6 @@
-
 // Symbol for internal id property
 const _id = Symbol('id');
-// --- Symbol for the last value 
+// --- Symbol for the last value
 const _last = Symbol('last');
 
 // --- Core System Abstractions ---
@@ -44,6 +43,7 @@ namespace DependencyCore {
     }
 
     function generateUuid(): string {
+        // Using a simple UUID v4 generation for browser compatibility
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
             const r = Math.random() * 16 | 0,
                 v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -69,13 +69,13 @@ namespace DependencyCore {
             if (details.scopeId !== undefined) { removeFromListDict(scopeIndex, details.scopeId, depId); }
         }
     }
-    // Updated disposeScope logic (agreed upon)
     export function disposeScope(scopeId: ScopeId): void {
-        const depIds = scopeIndex.get(scopeId); 
+        const depIds = scopeIndex.get(scopeId);
         if (depIds) {
-            const idsToRemove = [...depIds]; 
-            idsToRemove.forEach(depId => removeDependency(depId)); 
+            const idsToRemove = [...depIds]; // Create a copy to avoid modification during iteration
+            idsToRemove.forEach(depId => removeDependency(depId));
 
+            // After removing dependencies, check if the list for this scope is now empty
             const remainingDepsInScopeList = scopeIndex.get(scopeId);
             if (remainingDepsInScopeList && remainingDepsInScopeList.length === 0) {
                 scopeIndex.delete(scopeId);
@@ -98,69 +98,72 @@ export type Now = symbol;
 export const Now: Now = Symbol("Conceptual time coordinate");
 
 // Internal helper, not exported from module but used by standalone functions
-// This is the base code version.
-export const isNull = <A>(value: A): boolean => value === null || value === undefined;
+const isNull = <A>(value: A): boolean => value === null || value === undefined;
 
 // Standalone functions that implement the logic for the methods.
-// These are not exported from the module directly but are called by the methods.
 // Their names match the method names.
 
 // _at and _define are core and were part of the original base structure
 const at = <A>(_now: Now) => (timeline: Timeline<A>): A => timeline[_last];
 
 const define = <A>(_now: Now) => (value: A) => (timeline: Timeline<A>): void => {
-    (timeline as any)._last = value; // Mutates the _last property of the passed instance
+    (timeline as any)[_last] = value; // Mutates the _last property of the passed instance
     const callbacks = DependencyCore.getCallbacks(timeline[_id]);
     callbacks.forEach(({ depId, callback }) => {
         try {
-            (callback as (val: A) => void)(value);
-        } catch (ex: any) {
-            if (ex instanceof TypeError) {
-                 console.warn(`Warning: Callback execution error for DependencyId ${depId}. TL Value: ${typeof value}. Err: ${ex.message}`);
+            // F# allows `null` callback objects, so check for that and warn.
+            if (callback === null) {
+                console.warn(`Warning: Callback object is null for DependencyId ${depId}`);
             } else {
-                 console.error(`Error executing callback for DepId ${depId}: ${ex.message}`);
+                try {
+                    (callback as (val: A) => void)(value);
+                } catch (ex: any) {
+                    console.warn(`Error/Warning during callback for DependencyId ${depId}. Input value: ${value}. Error: ${ex.message}`);
+                }
             }
+        } catch (ex: any) {
+             console.error(`Unexpected error during callback iteration for DependencyId ${depId}: ${ex.message}`);
         }
     });
 };
 
-// Raw map (based on original map behavior)
+// Raw map (based on original map behavior) - No longer exported
 const map = <A, B>(f: (valueA: A) => B) => (timelineA: Timeline<A>): Timeline<B> => {
-    const initialB = f(timelineA.at(Now)); // Call interface method
-    const timelineB = Timeline(initialB); 
+    const initialB = f(timelineA.at(Now));
+    const timelineB = Timeline(initialB);
 
     const reactionFn = (valueA: A): void => {
         const newValueB = f(valueA);
-        timelineB.define(Now, newValueB); // Call interface method
+        timelineB.define(Now, newValueB);
     };
     DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFn, undefined);
     return timelineB;
 };
 
-// Nullable-aware nMap
+// Nullable-aware nMap - No longer exported
 const nMap = <A, B>(f: (valueA: A) => B) => (timelineA: Timeline<A>): Timeline<B | null> => {
-    const currentValueA = timelineA.at(Now); // Call interface method
+    const currentValueA = timelineA.at(Now);
     const initialB = isNull(currentValueA) ? null : f(currentValueA);
     const timelineB = Timeline(initialB as B | null);
 
     const reactionFn = (valueA: A): void => {
         const newValueB = isNull(valueA) ? null : f(valueA);
-        timelineB.define(Now, newValueB as B | null); // Call interface method
+        timelineB.define(Now, newValueB as B | null);
     };
     DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFn, undefined);
     return timelineB;
 };
 
-// Raw bind (based on original bind behavior)
+// Raw bind (based on original bind behavior) - No longer exported
 const bind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline<A>): Timeline<B> => {
-    let initialInnerTimeline = monadf(timelineA.at(Now)); // Call interface method
-    const timelineB = Timeline(initialInnerTimeline.at(Now)); // Call interface method
+    let initialInnerTimeline = monadf(timelineA.at(Now));
+    const timelineB = Timeline(initialInnerTimeline.at(Now));
     let currentScopeId: ScopeId = DependencyCore.createScope();
 
     const setUpInnerReaction = (innerTimeline: Timeline<B>, scopeForInner: ScopeId): void => {
         const reactionFnInnerToB = (valueInner: B): void => {
-            if (currentScopeId === scopeForInner) {
-                timelineB.define(Now, valueInner); // Call interface method
+            if (currentScopeId === scopeForInner) { // Ensure reaction belongs to current active inner timeline
+                timelineB.define(Now, valueInner);
             }
         };
         DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner);
@@ -169,39 +172,39 @@ const bind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline<
     setUpInnerReaction(initialInnerTimeline, currentScopeId);
 
     const reactionFnAtoB = (valueA: A): void => {
-        DependencyCore.disposeScope(currentScopeId);
-        currentScopeId = DependencyCore.createScope();
+        DependencyCore.disposeScope(currentScopeId); // Dispose old inner timeline dependencies
+        currentScopeId = DependencyCore.createScope(); // Create new scope for new inner timeline
         const newInnerTimeline = monadf(valueA);
-        timelineB.define(Now, newInnerTimeline.at(Now)); // Call interface method
-        setUpInnerReaction(newInnerTimeline, currentScopeId);
+        timelineB.define(Now, newInnerTimeline.at(Now)); // Propagate initial value of new inner timeline
+        setUpInnerReaction(newInnerTimeline, currentScopeId); // Set up new inner timeline reactions
     };
     DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined);
     return timelineB;
 };
 
-// Nullable-aware nBind
+// Nullable-aware nBind - No longer exported
 const nBind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline<A>): Timeline<B | null> => {
-    const initialValueA = timelineA.at(Now); // Call interface method
-    let initialInnerTimeline: Timeline<B | null>; 
+    const initialValueA = timelineA.at(Now);
+    let initialInnerTimeline: Timeline<B | null>;
 
     if (isNull(initialValueA)) {
-        initialInnerTimeline = Timeline(null as B | null); 
+        initialInnerTimeline = Timeline(null as B | null); // Default of 'B' is null for nullable bind
     } else {
-        initialInnerTimeline = monadf(initialValueA) as Timeline<B | null>; 
+        initialInnerTimeline = monadf(initialValueA) as Timeline<B | null>;
     }
-    
-    const timelineB = Timeline(initialInnerTimeline.at(Now)); // Call interface method
+
+    const timelineB = Timeline(initialInnerTimeline.at(Now));
     let currentScopeId: ScopeId = DependencyCore.createScope();
 
     const setUpInnerReaction = (innerTimeline: Timeline<B | null>, scopeForInner: ScopeId): void => {
         const reactionFnInnerToB = (valueInner: B | null): void => {
             if (currentScopeId === scopeForInner) {
-                timelineB.define(Now, valueInner); // Call interface method
+                timelineB.define(Now, valueInner);
             }
         };
         DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner);
     };
-    
+
     setUpInnerReaction(initialInnerTimeline, currentScopeId);
 
     const reactionFnAtoB = (valueA: A): void => {
@@ -213,93 +216,126 @@ const nBind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline
         } else {
             newInnerTimeline = monadf(valueA) as Timeline<B | null>;
         }
-        timelineB.define(Now, newInnerTimeline.at(Now)); // Call interface method
+        timelineB.define(Now, newInnerTimeline.at(Now));
         setUpInnerReaction(newInnerTimeline, currentScopeId);
     };
     DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined);
     return timelineB;
 };
 
-// New "raw" combineLatestWith: f is called directly, f is responsible for handling nulls
-const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>) => (timelineA: Timeline<A>): Timeline<C> => {
-    let latestA = timelineA.at(Now); // Call interface method
-    let latestB = timelineB.at(Now); // Call interface method
+// --- START OF MODIFICATIONS BASED ON AGREEMENT ---
+
+// New: scan function added - No longer exported
+const scan = <State, Input>(accumulator: (state: State, input: Input) => State) => (initialState: State) => (sourceTimeline: Timeline<Input>): Timeline<State> => {
+    const stateTimeline = Timeline(initialState);
+
+    sourceTimeline.map((input: Input) => {
+        const currentState = stateTimeline.at(Now);
+        const newState = accumulator(currentState, input);
+        stateTimeline.define(Now, newState);
+        return undefined; // map expects a return value, but it's ignored for side-effects here
+    });
+
+    return stateTimeline;
+};
+
+// Corrected: link function now uses map internally as per F# - No longer exported
+const link = <A>(targetTimeline: Timeline<A>) => (sourceTimeline: Timeline<A>): void => {
+    // The map function itself creates the dependency and handles initial value propagation
+    // via its internal reactionFn and initialB calculation.
+    sourceTimeline.map((value: A) => {
+        targetTimeline.define(Now, value);
+        return undefined; // map expects a return value, but it's for side-effects
+    });
+};
+
+// Corrected: distinctUntilChanged now uses an internal Timeline to hold state as per F# - No longer exported
+const distinctUntilChanged = <A>(sourceTimeline: Timeline<A>): Timeline<A> => {
+    const initialValue = sourceTimeline.at(Now);
+    const resultTimeline_instance = Timeline(initialValue);
+    // F# uses a Timeline to hold the last propagated value, mirroring that here.
+    const lastPropagatedTimeline = Timeline(initialValue);
+
+    sourceTimeline.map((currentValue: A) => {
+        const lastPropagatedValue = lastPropagatedTimeline.at(Now); // Get from the internal Timeline
+        if (currentValue !== lastPropagatedValue) {
+            lastPropagatedTimeline.define(Now, currentValue); // Define to the internal Timeline
+            resultTimeline_instance.define(Now, currentValue);
+        }
+        return undefined; // map expects a return value
+    });
+
+    return resultTimeline_instance;
+};
+
+// Corrected: combineLatestWith argument order (f => timelineA => timelineB) - This remains exported as it's not a method
+export const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineA: Timeline<A>) => (timelineB: Timeline<B>): Timeline<C> => {
+    let latestA = timelineA.at(Now);
+    let latestB = timelineB.at(Now);
     const resultTimeline_instance = Timeline(f(latestA, latestB));
 
     const reactionA = (valA: A): void => {
         latestA = valA;
-        resultTimeline_instance.define(Now, f(latestA, latestB)); // Call interface method
+        resultTimeline_instance.define(Now, f(latestA, latestB));
     };
     DependencyCore.registerDependency(timelineA[_id], resultTimeline_instance[_id], reactionA, undefined);
 
     const reactionB = (valB: B): void => {
         latestB = valB;
-        resultTimeline_instance.define(Now, f(latestA, latestB)); // Call interface method
+        resultTimeline_instance.define(Now, f(latestA, latestB));
     };
     DependencyCore.registerDependency(timelineB[_id], resultTimeline_instance[_id], reactionB, undefined);
     return resultTimeline_instance;
 };
 
-// Nullable-aware nCombineLatestWith (original combineLatestWith behavior from base code)
-const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineB: Timeline<B>) => (timelineA: Timeline<A>): Timeline<C | null> => {
-    let latestA = timelineA.at(Now); // Call interface method
-    let latestB = timelineB.at(Now); // Call interface method
+// Corrected: nCombineLatestWith argument order (f => timelineA => timelineB) - This remains exported as it's not a method
+// F# Unchecked.defaultof<'c'> is represented as `null` in TS for generic type `C`.
+export const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineA: Timeline<A>) => (timelineB: Timeline<B>): Timeline<C | null> => {
+    let latestA = timelineA.at(Now);
+    let latestB = timelineB.at(Now);
 
     const calculateCombinedValue = (): C | null => {
-        if (isNull(latestA) || isNull(latestB)) { return null; }
-        return f(latestA!, latestB!); 
+        if (isNull(latestA) || isNull(latestB)) {
+            return null; // Represents F# Unchecked.defaultof<'c'> when inputs are null
+        }
+        return f(latestA!, latestB!);
     };
 
     const resultTimeline_instance = Timeline(calculateCombinedValue());
 
     const reactionA = (valA: A): void => {
         latestA = valA;
-        resultTimeline_instance.define(Now, calculateCombinedValue()); // Call interface method
+        resultTimeline_instance.define(Now, calculateCombinedValue());
     };
     DependencyCore.registerDependency(timelineA[_id], resultTimeline_instance[_id], reactionA, undefined);
 
     const reactionB = (valB: B): void => {
         latestB = valB;
-        resultTimeline_instance.define(Now, calculateCombinedValue()); // Call interface method
+        resultTimeline_instance.define(Now, calculateCombinedValue());
     };
     DependencyCore.registerDependency(timelineB[_id], resultTimeline_instance[_id], reactionB, undefined);
     return resultTimeline_instance;
 };
 
-const link = <A>(targetTimeline: Timeline<A>) => (sourceTimeline: Timeline<A>): void => {
-    const reactionFn = (value: A): void => {
-        targetTimeline.define(Now, value); // Call interface method
-    };
-    DependencyCore.registerDependency(sourceTimeline[_id], targetTimeline[_id], reactionFn, undefined);
-    targetTimeline.define(Now, sourceTimeline.at(Now)); // Call interface method
-};
-
-const distinctUntilChanged = <A>(sourceTimeline: Timeline<A>): Timeline<A> => {
-    const initialValue = sourceTimeline.at(Now); // Call interface method
-    const resultTimeline_instance = Timeline(initialValue);
-    let lastPropagatedValue = initialValue;
-
-    const reactionFn = (newValue: A): void => {
-        if (newValue !== lastPropagatedValue) {
-            lastPropagatedValue = newValue;
-            resultTimeline_instance.define(Now, newValue); // Call interface method
-        }
-    };
-    DependencyCore.registerDependency(sourceTimeline[_id], resultTimeline_instance[_id], reactionFn, undefined);
-    return resultTimeline_instance;
-};
-
-// Or and And use nCombineLatestWith for robust boolean logic
-const Or = (timelineB: Timeline<boolean>) => (timelineA: Timeline<boolean>): Timeline<boolean> => {
-    const zipResult = nCombineLatestWith<boolean, boolean, boolean>((a, b) => a || b)(timelineB)(timelineA);
+// Corrected: Or and And now use the fixed combineLatestWith argument order.
+// The map for null -> boolean is retained because nCombineLatestWith returns C | null,
+// and boolean operations expect boolean, so null must be explicitly handled.
+// These remain exported as they are not Timeline methods in F# style, but standalone logic.
+export const Or = (timelineA: Timeline<boolean>) => (timelineB: Timeline<boolean>): Timeline<boolean> => {
+    // nCombineLatestWith is called with (f)(timelineA)(timelineB) as per new order
+    const zipResult = nCombineLatestWith<boolean, boolean, boolean>((a, b) => a || b)(timelineA)(timelineB);
+    // This map ensures the Timeline<boolean|null> from nCombineLatestWith becomes Timeline<boolean>
     return map<boolean | null, boolean>(value => value === null ? false : value)(zipResult);
 };
 
-const And = (timelineB: Timeline<boolean>) => (timelineA: Timeline<boolean>): Timeline<boolean> => {
-    const zipResult = nCombineLatestWith<boolean, boolean, boolean>((a, b) => a && b)(timelineB)(timelineA);
+export const And = (timelineA: Timeline<boolean>) => (timelineB: Timeline<boolean>): Timeline<boolean> => {
+    // nCombineLatestWith is called with (f)(timelineA)(timelineB) as per new order
+    const zipResult = nCombineLatestWith<boolean, boolean, boolean>((a, b) => a && b)(timelineA)(timelineB);
+    // This map ensures the Timeline<boolean|null> from nCombineLatestWith becomes Timeline<boolean>
     return map<boolean | null, boolean>(value => value === null ? false : value)(zipResult);
 };
 
+// --- END OF MODIFICATIONS ---
 
 
 export interface Timeline<A> {
@@ -309,17 +345,18 @@ export interface Timeline<A> {
     at(now: Now): A;
     define(now: Now, value: A): void;
 
-    // Raw versions
+    // These methods remain
     map<B>(f: (value: A) => B): Timeline<B>;
     bind<B>(monadf: (value: A) => Timeline<B>): Timeline<B>;
-    combineLatestWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C>;
+    // combineLatestWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C>; // REMOVED
 
     // Nullable-aware versions
     nMap<B>(f: (value: A) => B): Timeline<B | null>;
     nBind<B>(monadf: (value: A) => Timeline<B>): Timeline<B | null>;
-    nCombineLatestWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C | null>;
+    // nCombineLatestWith<B, C>(f: (valA: A, valB: B) => C, timelineB: Timeline<B>): Timeline<C | null>; // REMOVED
 
     link(targetTimeline: Timeline<A>): void;
+    scan<State>(accumulator: (state: State, input: A) => State, initialState: State): Timeline<State>;
     distinctUntilChanged(): Timeline<A>;
 
     Or(this: Timeline<boolean>, timelineB: Timeline<boolean>): Timeline<boolean>;
@@ -330,49 +367,48 @@ export interface Timeline<A> {
 // --- Timeline Factory Function (Exported as 'Timeline') ---
 export const Timeline = <A>(initialValue: A): Timeline<A> => ({
     [_id]: DependencyCore.generateTimelineId(),
-    [_last]: initialValue, 
+    [_last]: initialValue,
 
     at: function(this: Timeline<A>, nowInstance: Now): A {
-        return at<A>(nowInstance)(this); 
+        return at<A>(nowInstance)(this);
     },
     define: function(this: Timeline<A>, nowInstance: Now, value: A): void {
-        define<A>(nowInstance)(value)(this); 
+        define<A>(nowInstance)(value)(this);
     },
-    // Raw versions
+    // Raw versions - These methods are KEPT
     map: function<B>(this: Timeline<A>, f: (valueA: A) => B): Timeline<B> {
         return map<A, B>(f)(this);
     },
     bind: function<B>(this: Timeline<A>, monadf: (valueA: A) => Timeline<B>): Timeline<B> {
         return bind<A, B>(monadf)(this);
     },
-    combineLatestWith: function<B, C>(this: Timeline<A>, f: (valA: A, valB: B) => C, timelineB_param: Timeline<B>): Timeline<C> {
-        return combineLatestWith<A, B, C>(f)(timelineB_param)(this);
-    },
 
-    // Nullable-aware versions
+    // Nullable-aware versions - These methods are KEPT
     nMap: function<B>(this: Timeline<A>, f: (valueA: A) => B): Timeline<B | null> {
         return nMap<A, B>(f)(this);
     },
     nBind: function<B>(this: Timeline<A>, monadf: (valueA: A) => Timeline<B>): Timeline<B | null> {
         return nBind<A, B>(monadf)(this);
     },
-    nCombineLatestWith: function<B, C>(this: Timeline<A>, f: (valA: A, valB: B) => C, timelineB_param: Timeline<B>): Timeline<C | null> {
-        return nCombineLatestWith<A, B, C>(f)(timelineB_param)(this);
-    },
 
     link: function(this: Timeline<A>, targetTimeline: Timeline<A>): void {
         link<A>(targetTimeline)(this);
+    },
+    scan: function<State>(this: Timeline<A>, accumulator: (state: State, input: A) => State, initialState: State): Timeline<State> {
+        return scan<State, A>(accumulator)(initialState)(this);
     },
     distinctUntilChanged: function(this: Timeline<A>): Timeline<A> {
         return distinctUntilChanged<A>(this);
     },
 
-    // Logical operators
+    // Logical operators - These methods are KEPT
     Or: function(this: Timeline<boolean>, timelineB_param: Timeline<boolean>): Timeline<boolean> {
-        return Or(timelineB_param)(this as Timeline<boolean>);
+        // Pass 'this' (timelineA) as the first argument, and timelineB_param as the second
+        return Or(this as Timeline<boolean>)(timelineB_param);
     },
     And: function(this: Timeline<boolean>, timelineB_param: Timeline<boolean>): Timeline<boolean> {
-        return And(timelineB_param)(this as Timeline<boolean>);
+        // Pass 'this' (timelineA) as the first argument, and timelineB_param as the second
+        return And(this as Timeline<boolean>)(timelineB_param);
     },
 });
 
@@ -382,13 +418,23 @@ export const ID = <A>(initialValue: A): Timeline<A> => Timeline(initialValue);
 export const FalseTimeline: Timeline<boolean> = Timeline(false);
 export const TrueTimeline: Timeline<boolean> = Timeline(true);
 
+// Corrected: any and all now use the standalone Or/And functions
 export const any = (booleanTimelines: Timeline<boolean>[]): Timeline<boolean> => {
     if (booleanTimelines.length === 0) return FalseTimeline;
-    return booleanTimelines.reduce((acc, elem) => acc.Or(elem), FalseTimeline);
+    // Or is a standalone export, so it's fine to call it directly here.
+    return booleanTimelines.reduce((acc, elem) => Or(acc)(elem), FalseTimeline);
 };
 
 export const all = (booleanTimelines: Timeline<boolean>[]): Timeline<boolean> => {
     if (booleanTimelines.length === 0) return TrueTimeline;
-    return booleanTimelines.reduce((acc, elem) => acc.And(elem), TrueTimeline);
+    // And is a standalone export, so it's fine to call it directly here.
+    return booleanTimelines.reduce((acc, elem) => And(acc)(elem), TrueTimeline);
 };
 
+// Monadic composition operator (>>>)
+// F# type: ('a -> Timeline<'b>) -> ('b -> Timeline<'c>) -> ('a -> Timeline<'c>)
+export const pipeBind = <A, B, C>(f: (a: A) => Timeline<B>) => (g: (b: B) => Timeline<C>) => (a: A): Timeline<C> => {
+    const timelineFromF = f(a);
+    // bind is a method, so we call it on the timelineFromF instance.
+    return timelineFromF.bind(g);
+};
