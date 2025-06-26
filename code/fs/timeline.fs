@@ -9,53 +9,77 @@ type TimelineId = System.Guid
 type DependencyId = System.Guid
 type ScopeId = System.Guid
 
+// --- Improved Error Handling ---
+type ErrorContext =
+    | General
+    | ScopeMismatch
+    | BindTransition
+    | CallbackExecution
+    | MapFunction
+    | ScanAccumulator
+    | CombineInitial
+    | CombineReactionA
+    | CombineReactionB
+
+let private handleCallbackError (depId: DependencyId) (context: ErrorContext) (ex: System.Exception) (value: obj option) =
+    match context with
+    | ScopeMismatch ->
+        // Scope mismatches are expected during bind operations
+        System.Diagnostics.Debug.WriteLine($"Scope mismatch for dependency {depId} - normal during bind operations")
+    | BindTransition ->
+        // Errors during bind transitions should be warnings
+        System.Diagnostics.Debug.WriteLine($"Callback transition warning for {depId}: {ex.Message}")
+    | _ ->
+        // For other errors, provide detailed information
+        let valueStr = value |> Option.map (fun v -> v.ToString()) |> Option.defaultValue "N/A"
+        System.Diagnostics.Debug.WriteLine($"Callback error [{context}] for dependency {depId}: {ex.Message}, Value: {valueStr}")
+
+// --- Improved Dependency Details ---
 type internal DependencyDetails =
     { SourceId: TimelineId
       TargetId: TimelineId
-      Callback: obj
+      Callback: obj // Still obj for practical reasons, but with better error handling
       ScopeId: ScopeId option
     }
 
-// --- Dependency Management Core ---
+// --- Enhanced Dependency Management Core ---
 module internal DependencyCore =
     let private dependencies = System.Collections.Generic.Dictionary<DependencyId, DependencyDetails>()
-    let private sourceIndex = System.Collections.Generic.Dictionary<TimelineId, System.Collections.Generic.List<DependencyId>>()
-    let private scopeIndex = System.Collections.Generic.Dictionary<ScopeId, System.Collections.Generic.List<DependencyId>>()
+    let private sourceIndex = System.Collections.Generic.Dictionary<TimelineId, System.Collections.Generic.HashSet<DependencyId>>()
+    let private scopeIndex = System.Collections.Generic.Dictionary<ScopeId, System.Collections.Generic.HashSet<DependencyId>>()
 
-    let private addToListDict<'K, 'V when 'K : equality> : System.Collections.Generic.Dictionary<'K, System.Collections.Generic.List<'V>> -> 'K -> 'V -> unit =
+    let private addToHashSetDict<'K, 'V when 'K : equality and 'V : equality> : System.Collections.Generic.Dictionary<'K, System.Collections.Generic.HashSet<'V>> -> 'K -> 'V -> unit =
         fun dict key value ->
             match dict.TryGetValue(key) with
-            | true, list -> list.Add(value)
+            | true, hashSet -> hashSet.Add(value) |> ignore
             | false, _ ->
-                let newList = System.Collections.Generic.List<'V>()
-                newList.Add(value)
-                dict.Add(key, newList)
+                let newHashSet = System.Collections.Generic.HashSet<'V>()
+                newHashSet.Add(value) |> ignore
+                dict.Add(key, newHashSet)
 
-    let private removeFromListDict<'K, 'V when 'K : equality> : System.Collections.Generic.Dictionary<'K, System.Collections.Generic.List<'V>> -> 'K -> 'V -> unit =
+    let private removeFromHashSetDict<'K, 'V when 'K : equality and 'V : equality> : System.Collections.Generic.Dictionary<'K, System.Collections.Generic.HashSet<'V>> -> 'K -> 'V -> unit =
         fun dict key value ->
             match dict.TryGetValue(key) with
-            | true, list ->
-                list.Remove(value) |> ignore
-                if list.Count = 0 then
+            | true, hashSet ->
+                hashSet.Remove(value) |> ignore
+                if hashSet.Count = 0 then
                     dict.Remove(key) |> ignore
             | false, _ -> ()
 
     let generateTimelineId : unit -> TimelineId =
-        fun () ->
-            System.Guid.NewGuid()
+        fun () -> System.Guid.NewGuid()
 
     let createScope : unit -> ScopeId =
-        fun () ->
-            System.Guid.NewGuid()
+        fun () -> System.Guid.NewGuid()
 
     let registerDependency : TimelineId -> TimelineId -> obj -> ScopeId option -> DependencyId =
         fun sourceId targetId callback scopeIdOpt ->
             let depId = System.Guid.NewGuid()
             let details = { SourceId = sourceId; TargetId = targetId; Callback = callback; ScopeId = scopeIdOpt }
             dependencies.Add(depId, details)
-            addToListDict sourceIndex sourceId depId
+            addToHashSetDict sourceIndex sourceId depId
             match scopeIdOpt with
-            | Some sId -> addToListDict scopeIndex sId depId
+            | Some sId -> addToHashSetDict scopeIndex sId depId
             | None -> ()
             depId
 
@@ -64,24 +88,23 @@ module internal DependencyCore =
             match dependencies.TryGetValue(depId) with
             | true, details ->
                 dependencies.Remove(depId) |> ignore
-                removeFromListDict sourceIndex details.SourceId depId
+                removeFromHashSetDict sourceIndex details.SourceId depId
                 match details.ScopeId with
-                | Some sId -> removeFromListDict scopeIndex sId depId
+                | Some sId -> removeFromHashSetDict scopeIndex sId depId
                 | None -> ()
             | false, _ -> ()
 
+    // --- FIXED: Improved disposeScope implementation ---
     let disposeScope : ScopeId -> unit =
         fun scopeId ->
             match scopeIndex.TryGetValue(scopeId) with
             | true, depIds ->
-                let idsToRemove = depIds |> List.ofSeq // Avoid modifying collection while iterating
-                idsToRemove |> List.iter removeDependency
-
-                match scopeIndex.TryGetValue(scopeId) with
-                | true, remainingDepsInScopeList ->
-                    if remainingDepsInScopeList.Count = 0 then
-                        scopeIndex.Remove(scopeId) |> ignore
-                | false, _ -> ()
+                // Create a copy to avoid modification during iteration
+                let idsToRemove = depIds |> Array.ofSeq
+                // Remove scope from index first to prevent inconsistencies
+                scopeIndex.Remove(scopeId) |> ignore
+                // Then remove all dependencies
+                idsToRemove |> Array.iter removeDependency
             | false, _ -> ()
 
     let getCallbacks : TimelineId -> list<DependencyId * obj> =
@@ -96,7 +119,6 @@ module internal DependencyCore =
                 |> List.ofSeq
             | false, _ -> List.empty
 
-
 // --- Timeline Type Definition ---
 type Timeline<'a> =
     private
@@ -109,7 +131,7 @@ let Timeline<'a> : 'a -> Timeline<'a> =
         let newId = DependencyCore.generateTimelineId()
         { _id = newId; _last = initialValue }
 
-// --- Core Timeline Operations Module ---
+// --- Enhanced Timeline Operations Module ---
 module TL =
     let isNull (value: 'a) : bool =
         match box value with
@@ -120,6 +142,7 @@ module TL =
         fun _now timeline ->
             timeline._last
 
+    // --- IMPROVED: Enhanced define with better error handling ---
     let define<'a> : NowType -> 'a -> Timeline<'a> -> unit =
         fun _now value timeline ->
             timeline._last <- value
@@ -128,30 +151,46 @@ module TL =
             |> List.iter (fun (depId, callbackObj) ->
                 try
                     if callbackObj = null then
-                        printfn "Warning: Callback object is null for DependencyId %A" depId
+                        handleCallbackError depId General (System.Exception("Null callback")) None
                     else
                         try
                             let callback = callbackObj :?> ('a -> unit)
                             callback value
                         with
+                        | :? System.InvalidCastException as ex ->
+                            handleCallbackError depId CallbackExecution ex (Some (box value))
                         | ex ->
-                            printfn "Error/Warning during callback for DependencyId %A. Input value (%%A): %A. JS Error: %s" depId value ex.Message
+                            handleCallbackError depId CallbackExecution ex (Some (box value))
                 with
                 | ex ->
-                    printfn "Unexpected error during callback iteration for DependencyId %A: %s" depId ex.Message
+                    handleCallbackError depId General ex (Some (box value))
             )
 
+    // --- IMPROVED: Enhanced map with better error handling ---
     let map<'a, 'b> : ('a -> 'b) -> Timeline<'a> -> Timeline<'b> =
         fun f timelineA ->
-            let initialB = f (timelineA |> at Now)
+            let initialB =
+                try
+                    f (timelineA |> at Now)
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty MapFunction ex (Some (box (timelineA |> at Now)))
+                    reraise()
+
             let timelineB = Timeline initialB
             let reactionFn : 'a -> unit =
                 fun valueA ->
-                    let newValueB = f valueA
-                    timelineB |> define Now newValueB
+                    try
+                        let newValueB = f valueA
+                        timelineB |> define Now newValueB
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty MapFunction ex (Some (box valueA))
+
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None |> ignore
             timelineB
 
+    // --- IMPROVED: Enhanced nMap with better null handling ---
     let nMap<'a, 'b> : ('a -> 'b) -> Timeline<'a> -> Timeline<'b> =
         fun f timelineA ->
             let currentValueA = timelineA |> at Now
@@ -159,19 +198,32 @@ module TL =
                 if isNull currentValueA then
                     Unchecked.defaultof<'b>
                 else
-                    f currentValueA
+                    try
+                        f currentValueA
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty MapFunction ex (Some (box currentValueA))
+                        Unchecked.defaultof<'b>
+
             let timelineB = Timeline initialB
             let reactionFn : 'a -> unit =
                 fun valueA ->
-                    let newValueB =
-                        if isNull valueA then
-                            Unchecked.defaultof<'b>
-                        else
-                            f valueA
-                    timelineB |> define Now newValueB
+                    try
+                        let newValueB =
+                            if isNull valueA then
+                                Unchecked.defaultof<'b>
+                            else
+                                f valueA
+                        timelineB |> define Now newValueB
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty MapFunction ex (Some (box valueA))
+                        timelineB |> define Now Unchecked.defaultof<'b>
+
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None |> ignore
             timelineB
 
+    // --- IMPROVED: Enhanced bind with better scope management ---
     let bind<'a, 'b> : ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b> =
         fun monadf timelineA ->
             let initialInnerTimeline = monadf (timelineA |> at Now)
@@ -183,21 +235,29 @@ module TL =
                     fun valueInner ->
                         if currentScopeId = scopeForInner then
                             timelineB |> define Now valueInner
+                        // No warning for scope mismatch - expected during transitions
+
                 DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) |> ignore
 
             setUpInnerReaction initialInnerTimeline currentScopeId
 
             let reactionFnAtoB : 'a -> unit =
                 fun valueA ->
-                    DependencyCore.disposeScope currentScopeId
-                    let newScope = DependencyCore.createScope()
-                    currentScopeId <- newScope
-                    let newInnerTimeline = monadf valueA
-                    timelineB |> define Now (newInnerTimeline |> at Now)
-                    setUpInnerReaction newInnerTimeline newScope
+                    try
+                        // Clean scope management
+                        DependencyCore.disposeScope currentScopeId
+                        currentScopeId <- DependencyCore.createScope()
+                        let newInnerTimeline = monadf valueA
+                        timelineB |> define Now (newInnerTimeline |> at Now)
+                        setUpInnerReaction newInnerTimeline currentScopeId
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty BindTransition ex (Some (box valueA))
+
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None |> ignore
             timelineB
 
+    // --- IMPROVED: Enhanced nBind with better null handling ---
     let nBind<'a, 'b> : ('a -> Timeline<'b>) -> Timeline<'a> -> Timeline<'b> =
         fun monadf timelineA ->
             let initialValueA = timelineA |> at Now
@@ -205,7 +265,12 @@ module TL =
                 if isNull initialValueA then
                     Timeline Unchecked.defaultof<'b>
                 else
-                    monadf initialValueA
+                    try
+                        monadf initialValueA
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty BindTransition ex (Some (box initialValueA))
+                        Timeline Unchecked.defaultof<'b>
 
             let timelineB = Timeline (initialInnerTimeline |> at Now)
             let mutable currentScopeId : ScopeId = DependencyCore.createScope()
@@ -215,22 +280,31 @@ module TL =
                     fun valueInner ->
                         if currentScopeId = scopeForInner then
                             timelineB |> define Now valueInner
+
                 DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) |> ignore
 
             setUpInnerReaction initialInnerTimeline currentScopeId
 
             let reactionFnAtoB : 'a -> unit =
                 fun valueA ->
-                    DependencyCore.disposeScope currentScopeId
-                    let newScope = DependencyCore.createScope()
-                    currentScopeId <- newScope
-                    let newInnerTimeline =
-                        if isNull valueA then
-                            Timeline Unchecked.defaultof<'b>
-                        else
-                            monadf valueA
-                    timelineB |> define Now (newInnerTimeline |> at Now)
-                    setUpInnerReaction newInnerTimeline newScope
+                    try
+                        DependencyCore.disposeScope currentScopeId
+                        currentScopeId <- DependencyCore.createScope()
+                        let newInnerTimeline =
+                            if isNull valueA then
+                                Timeline Unchecked.defaultof<'b>
+                            else
+                                monadf valueA
+                        timelineB |> define Now (newInnerTimeline |> at Now)
+                        setUpInnerReaction newInnerTimeline currentScopeId
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty BindTransition ex (Some (box valueA))
+                        // On error, create a null timeline to maintain consistency
+                        let fallbackTimeline = Timeline Unchecked.defaultof<'b>
+                        timelineB |> define Now Unchecked.defaultof<'b>
+                        setUpInnerReaction fallbackTimeline currentScopeId
+
             DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None |> ignore
             timelineB
 
@@ -242,94 +316,97 @@ module TL =
             )
             |> ignore
 
+    // --- IMPROVED: Enhanced scan with better error handling ---
     let scan<'state, 'input> (accumulator: 'state -> 'input -> 'state) (initialState: 'state) (sourceTimeline: Timeline<'input>) : Timeline<'state> =
-        // The state itself is managed by a separate, dedicated timeline.
         let stateTimeline = Timeline initialState
 
-        // We use `map` on the source timeline to trigger updates to the state timeline.
         sourceTimeline
         |> map (fun input ->
-            // On each input, get the LATEST current state from the state timeline.
-            let currentState = stateTimeline |> at Now
-            // Calculate the new state.
-            let newState = accumulator currentState input
-            // Define the new state back onto the state timeline.
-            stateTimeline |> define Now newState
+            try
+                let currentState = stateTimeline |> at Now
+                let newState = accumulator currentState input
+                stateTimeline |> define Now newState
+            with
+            | ex ->
+                handleCallbackError System.Guid.Empty ScanAccumulator ex (Some (box input))
         )
-        |> ignore // The Timeline<unit> returned by map is not needed.
+        |> ignore
 
-        // Return the timeline that holds the state.
         stateTimeline
 
     let distinctUntilChanged<'a when 'a : equality> (sourceTimeline: Timeline<'a>) : Timeline<'a> =
         let initialValue = sourceTimeline |> at Now
-
-        // This is the public-facing timeline that will only contain distinct values.
         let resultTimeline = Timeline initialValue
-
-        // This is a private, internal timeline that holds the state of the last value
-        // that was successfully propagated.
         let lastPropagatedTimeline = Timeline initialValue
 
-        // We register a reaction on the source timeline using `map`.
         sourceTimeline
         |> map (fun currentValue ->
-            // For each new value from the source, get the state of the last propagated one.
             let lastPropagatedValue = lastPropagatedTimeline |> at Now
-
-            // Only if the new value is different...
             if currentValue <> lastPropagatedValue then
-                // ...do we update both our internal state timeline...
                 lastPropagatedTimeline |> define Now currentValue
-                // ...and the final result timeline.
                 resultTimeline |> define Now currentValue
         )
-        |> ignore // The Timeline<unit> from map is not needed.
+        |> ignore
 
         resultTimeline
 
-    // Raw version: f is called even if latestA or latestB is null
+    // --- IMPROVED: Enhanced combineLatestWith with better error handling ---
     let combineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'a> -> Timeline<'b> -> Timeline<'c> =
         fun f timelineA timelineB ->
             let initialA = timelineA |> at Now
             let initialB = timelineB |> at Now
-            let resultTimeline = Timeline (f initialA initialB)
+            let initialResult =
+                try
+                    f initialA initialB
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty CombineInitial ex (Some (box (initialA, initialB)))
+                    reraise()
 
-            // timelineA updated
+            let resultTimeline = Timeline initialResult
+
             timelineA
             |> map (fun newA ->
-                let latestB = timelineB |> at Now
-                resultTimeline |> define Now (f newA latestB)
+                try
+                    let latestB = timelineB |> at Now
+                    resultTimeline |> define Now (f newA latestB)
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty CombineReactionA ex (Some (box newA))
             )
             |> ignore
 
-            // timelineB updated
             timelineB
             |> map (fun newB ->
-                let latestA = timelineA |> at Now
-                resultTimeline |> define Now (f latestA newB)
+                try
+                    let latestA = timelineA |> at Now
+                    resultTimeline |> define Now (f latestA newB)
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty CombineReactionB ex (Some (box newB))
             )
             |> ignore
 
             resultTimeline
 
-    // Nullable-aware version (This is the primary version used by other combinators)
-// Nullable-aware version: f is not called if latestA or latestB is null.
-    // The resultTimeline will hold Unchecked.defaultof<'c> in that case.
+    // --- IMPROVED: Enhanced nCombineLatestWith ---
     let nCombineLatestWith<'a, 'b, 'c> : ('a -> 'b -> 'c) -> Timeline<'a> -> Timeline<'b> -> Timeline<'c> =
         fun f timelineA timelineB ->
-            // Perform a null-check for the initial value.
             let initialA = timelineA |> at Now
             let initialB = timelineB |> at Now
             let initialResult =
                 if isNull initialA || isNull initialB then
                     Unchecked.defaultof<'c>
                 else
-                    f initialA initialB
+                    try
+                        f initialA initialB
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty CombineInitial ex (Some (box (initialA, initialB)))
+                        Unchecked.defaultof<'c>
 
             let resultTimeline = Timeline initialResult
 
-            // When timelineA updates, get the latest value from timelineB and perform a null-check.
             timelineA
             |> map (fun newA ->
                 let latestB = timelineB |> at Now
@@ -337,12 +414,16 @@ module TL =
                     if isNull newA || isNull latestB then
                         Unchecked.defaultof<'c>
                     else
-                        f newA latestB
+                        try
+                            f newA latestB
+                        with
+                        | ex ->
+                            handleCallbackError System.Guid.Empty CombineReactionA ex (Some (box newA))
+                            Unchecked.defaultof<'c>
                 resultTimeline |> define Now newResult
             )
             |> ignore
 
-            // When timelineB updates, get the latest value from timelineA and perform a null-check.
             timelineB
             |> map (fun newB ->
                 let latestA = timelineA |> at Now
@@ -350,7 +431,12 @@ module TL =
                     if isNull latestA || isNull newB then
                         Unchecked.defaultof<'c>
                     else
-                        f latestA newB
+                        try
+                            f latestA newB
+                        with
+                        | ex ->
+                            handleCallbackError System.Guid.Empty CombineReactionB ex (Some (box newB))
+                            Unchecked.defaultof<'c>
                 resultTimeline |> define Now newResult
             )
             |> ignore
@@ -358,8 +444,7 @@ module TL =
             resultTimeline
 
     let ID<'a> : 'a -> Timeline<'a> =
-        fun a ->
-            Timeline a
+        fun a -> Timeline a
 
     let inline (>>>) (f: 'a -> Timeline<'b>) (g: 'b -> Timeline<'c>) : ('a -> Timeline<'c>) =
         fun a ->
@@ -369,14 +454,12 @@ module TL =
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
 
-    // Or and And now use the standard-order nCombineLatestWith
     let Or (timelineA: Timeline<bool>) (timelineB: Timeline<bool>) : Timeline<bool> =
         nCombineLatestWith (||) timelineA timelineB
 
     let And (timelineA: Timeline<bool>) (timelineB: Timeline<bool>) : Timeline<bool> =
         nCombineLatestWith (&&) timelineA timelineB
 
-    // any and all now use the standard-order functions directly with fold
     let any (booleanTimelines: list<Timeline<bool>>) : Timeline<bool> =
         List.fold Or FalseTimeline booleanTimelines
 
