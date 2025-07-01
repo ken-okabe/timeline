@@ -3,12 +3,114 @@ const _id = Symbol('id');
 // --- Symbol for the last value
 const _last = Symbol('last');
 
-// IMPROVED DependencyCore - Based on timeline-depcore.js with enhancements
-var DependencyCore;
-(function (DependencyCore) {
+export const createResource = (resource, cleanup) => ({
+    resource,
+    cleanup
+});
+
+// --- 改良: 環境に依存しないデバッグモード判定 ---
+const debugMode = (() => {
+    // Node.js環境での判定
+    if (typeof process !== 'undefined' && process.env) {
+        return process.env.NODE_ENV === 'development';
+    }
+
+    // ブラウザ環境での判定（より厳密なチェック）
+    if (
+        typeof window !== 'undefined' &&
+        typeof window.location !== 'undefined' &&
+        typeof URLSearchParams !== 'undefined'
+    ) {
+        // 1. URLパラメータでの制御
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('debug')) {
+            return urlParams.get('debug') !== 'false';
+        }
+
+        // 2. localStorageでの制御（永続化）
+        try {
+            const debugFlag = localStorage.getItem('timeline-debug');
+            if (debugFlag !== null) {
+                return debugFlag === 'true';
+            }
+        } catch (e) {
+            // localStorage が使えない環境では無視
+        }
+
+        // 3. developmentビルドの検出（webpack等）
+        if (typeof __DEV__ !== 'undefined') {
+            return __DEV__;
+        }
+
+        // 4. 本番環境の検出（一般的なパターン）
+        if (window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1' ||
+            window.location.hostname.startsWith('192.168.') ||
+            window.location.port !== '') {
+            return true; // 開発環境と推定
+        }
+    }
+
+    // デフォルトは無効
+    return false;
+})();
+
+// DependencyCore内で使用する際の判定関数
+const isDebugEnabled = () => {
+    // 一時的な有効化をチェック
+    if (typeof window !== 'undefined' && window.__TIMELINE_DEBUG_TEMP__) {
+        return true;
+    }
+    return debugMode;
+};
+
+// より柔軟な制御のためのユーティリティ関数
+export const DebugControl = {
+    // 動的にデバッグモードを有効/無効化
+    enable: () => {
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('timeline-debug', 'true');
+                console.log('Timeline debug mode enabled. Reload to take effect.');
+            } catch (e) {
+                console.warn('Could not enable debug mode: localStorage not available');
+            }
+        }
+    },
+
+    disable: () => {
+        if (typeof window !== 'undefined') {
+            try {
+                localStorage.setItem('timeline-debug', 'false');
+                console.log('Timeline debug mode disabled. Reload to take effect.');
+            } catch (e) {
+                console.warn('Could not disable debug mode: localStorage not available');
+            }
+        }
+    },
+
+    // 現在の状態を確認
+    isEnabled: () => isDebugEnabled(),
+
+    // セッション中の一時的な有効化（リロード不要）
+    enableTemporary: () => {
+        if (typeof window !== 'undefined') {
+            window.__TIMELINE_DEBUG_TEMP__ = true;
+            console.log('Timeline debug mode temporarily enabled for this session.');
+        }
+    }
+};
+
+// -----------------------------------------------------------------------------
+// DependencyCore: デバッグ支援強化版
+// -----------------------------------------------------------------------------
+const DependencyCore = (() => {
     const dependencies = new Map();
     const sourceIndex = new Map();
     const scopeIndex = new Map();
+
+    const scopeDebugInfo = new Map();
+    const dependencyDebugInfo = new Map();
 
     function addToListDict(dict, key, value) {
         if (dict.has(key)) {
@@ -32,221 +134,264 @@ var DependencyCore;
     }
 
     function generateUuid() {
-        // Using a simple UUID v4 generation for browser compatibility
         return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
             const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
             return v.toString(16);
         });
     }
 
-    DependencyCore.generateTimelineId = generateUuid;
-    DependencyCore.createScope = generateUuid;
-
-    function registerDependency(sourceId, targetId, callback, scopeIdOpt) {
-        const depId = generateUuid();
-        const details = { sourceId, targetId, callback, scopeId: scopeIdOpt };
-        dependencies.set(depId, details);
-        addToListDict(sourceIndex, sourceId, depId);
-        if (scopeIdOpt !== undefined) {
-            addToListDict(scopeIndex, scopeIdOpt, depId);
-        }
-        return depId;
-    }
-    DependencyCore.registerDependency = registerDependency;
-
-    function removeDependency(depId) {
-        const details = dependencies.get(depId);
-        if (details) {
-            dependencies.delete(depId);
-            removeFromListDict(sourceIndex, details.sourceId, depId);
-            if (details.scopeId !== undefined) {
-                removeFromListDict(scopeIndex, details.scopeId, depId);
+    return {
+        generateTimelineId: () => generateUuid(),
+        createScope: (parentScope) => {
+            const scopeId = generateUuid();
+            if (isDebugEnabled()) {
+                scopeDebugInfo.set(scopeId, {
+                    scopeId,
+                    dependencyIds: [],
+                    createdAt: Date.now(),
+                    parentScope
+                });
             }
-        }
-    }
-    DependencyCore.removeDependency = removeDependency;
-
-    // IMPROVED: More efficient scope disposal
-    DependencyCore.disposeScope = function (scopeId) {
-        const depIds = scopeIndex.get(scopeId);
-        if (depIds) {
-            const idsToRemove = [...depIds]; // Create a copy to avoid modification during iteration
-            idsToRemove.forEach(depId => removeDependency(depId));
-            // Clean up the scope index entry
-            scopeIndex.delete(scopeId);
+            return scopeId;
+        },
+        registerDependency: (sourceId, targetId, callback, scopeIdOpt, onDisposeOpt) => {
+            const depId = generateUuid();
+            const details = { sourceId, targetId, callback, scopeId: scopeIdOpt, onDispose: onDisposeOpt };
+            dependencies.set(depId, details);
+            addToListDict(sourceIndex, sourceId, depId);
+            if (scopeIdOpt !== undefined) {
+                addToListDict(scopeIndex, scopeIdOpt, depId);
+                if (isDebugEnabled()) {
+                    const debugInfo = scopeDebugInfo.get(scopeIdOpt);
+                    if (debugInfo) {
+                        debugInfo.dependencyIds.push(depId);
+                    }
+                }
+            }
+            if (isDebugEnabled()) {
+                dependencyDebugInfo.set(depId, {
+                    id: depId,
+                    sourceId,
+                    targetId,
+                    scopeId: scopeIdOpt,
+                    hasCleanup: !!onDisposeOpt,
+                    createdAt: Date.now()
+                });
+            }
+            return depId;
+        },
+        removeDependency: (depId) => {
+            const details = dependencies.get(depId);
+            if (details) {
+                if (details.onDispose) {
+                    try {
+                        details.onDispose();
+                    } catch (ex) {
+                        console.error(`Error during onDispose for dependency ${depId}: ${ex.message}`);
+                    }
+                }
+                dependencies.delete(depId);
+                removeFromListDict(sourceIndex, details.sourceId, depId);
+                if (details.scopeId !== undefined) {
+                    removeFromListDict(scopeIndex, details.scopeId, depId);
+                }
+                if (isDebugEnabled()) {
+                    dependencyDebugInfo.delete(depId);
+                    if (details.scopeId) {
+                        const debugInfo = scopeDebugInfo.get(details.scopeId);
+                        if (debugInfo) {
+                            const index = debugInfo.dependencyIds.indexOf(depId);
+                            if (index > -1) {
+                                debugInfo.dependencyIds.splice(index, 1);
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        disposeScope: (scopeId) => {
+            const depIds = scopeIndex.get(scopeId);
+            if (depIds) {
+                const idsToRemove = [...depIds];
+                idsToRemove.forEach(depId => DependencyCore.removeDependency(depId));
+                scopeIndex.delete(scopeId);
+                if (isDebugEnabled()) {
+                    scopeDebugInfo.delete(scopeId);
+                }
+            }
+        },
+        getCallbacks: (sourceId) => {
+            const depIds = sourceIndex.get(sourceId);
+            if (!depIds) return [];
+            return depIds
+                .map(depId => {
+                    const details = dependencies.get(depId);
+                    return details ? { depId, callback: details.callback } : undefined;
+                })
+                .filter(item => item !== undefined);
+        },
+        getDebugInfo: () => {
+            if (!isDebugEnabled()) {
+                return { scopes: [], dependencies: [], totalScopes: 0, totalDependencies: 0 };
+            }
+            return {
+                scopes: Array.from(scopeDebugInfo.values()),
+                dependencies: Array.from(dependencyDebugInfo.values()),
+                totalScopes: scopeDebugInfo.size,
+                totalDependencies: dependencyDebugInfo.size
+            };
+        },
+        printDebugTree: () => {
+            if (!isDebugEnabled()) {
+                console.log('Debug mode is disabled');
+                return;
+            }
+            const info = DependencyCore.getDebugInfo();
+            console.group('Timeline Dependency Tree');
+            console.log(`Total Scopes: ${info.totalScopes}`);
+            console.log(`Total Dependencies: ${info.totalDependencies}`);
+            info.scopes.forEach(scope => {
+                console.group(`Scope: ${scope.scopeId.substring(0, 8)}...`);
+                console.log(`Created: ${new Date(scope.createdAt).toISOString()}`);
+                console.log(`Dependencies: ${scope.dependencyIds.length}`);
+                if (scope.parentScope) {
+                    console.log(`Parent: ${scope.parentScope.substring(0, 8)}...`);
+                }
+                scope.dependencyIds.forEach(depId => {
+                    const dep = info.dependencies.find(d => d.id === depId);
+                    if (dep) {
+                        console.log(`  - ${depId.substring(0, 8)}... (cleanup: ${dep.hasCleanup})`);
+                    }
+                });
+                console.groupEnd();
+            });
+            console.groupEnd();
         }
     };
+})();
 
-    // IMPROVED: Streamlined callback retrieval
-    DependencyCore.getCallbacks = function (sourceId) {
-        const depIds = sourceIndex.get(sourceId);
-        if (!depIds) {
-            return [];
-        }
-        return depIds
-            .map(depId => {
-                const details = dependencies.get(depId);
-                return details ? { depId, callback: details.callback } : undefined;
-            })
-            .filter((item) => item !== undefined);
-    };
-})(DependencyCore || (DependencyCore = {}));
-
+// -----------------------------------------------------------------------------
+// Core API
+// -----------------------------------------------------------------------------
 export const Now = Symbol("Conceptual time coordinate");
 
-// Internal helper, not exported from module but used by standalone functions
 const isNull = (value) => value === null || value === undefined;
 
-// IMPROVED: Enhanced error handling with better categorization
 const handleCallbackError = (depId, callback, value, ex, context = 'general') => {
-    // Categorize errors for better debugging
-    if (context === 'scope_mismatch') {
-        // Scope mismatches are expected during bind operations, log as debug info
-        console.debug(`Scope mismatch for dependency ${depId} - this is normal during bind operations`);
+    if (context === 'scope_mismatch' || context === 'bind_transition') {
+        console.debug(`Transition info [${context}] for ${depId}: ${ex.message}`);
         return;
     }
-
-    if (context === 'bind_transition') {
-        // Errors during bind transitions should be warnings, not critical
-        console.warn(`Callback transition warning for ${depId}: ${ex.message}`);
-        return;
-    }
-
-    // For critical errors, provide detailed information but don't spam console
     console.warn(`Callback error [${context}] for dependency ${depId}: ${ex.message}`, {
         inputValue: value,
         callbackType: typeof callback
     });
 };
 
-// IMPROVED: More robust define with better error categorization
 const at = (_now) => (timeline) => timeline[_last];
 
 const define = (_now) => (value) => (timeline) => {
-    timeline[_last] = value; // Mutates the _last property of the passed instance
+    timeline[_last] = value;
     const callbacks = DependencyCore.getCallbacks(timeline[_id]);
-
     callbacks.forEach(({ depId, callback }) => {
         try {
-            // IMPROVED: Simplified null check - if callback is null, it's a setup issue
-            if (callback === null || callback === undefined) {
-                console.warn(`Null callback detected for dependency ${depId} - possible setup issue`);
-                return;
-            }
-
-            try {
-                callback(value);
-            } catch (ex) {
-                // IMPROVED: Less verbose error handling for normal operation
-                handleCallbackError(depId, callback, value, ex, 'callback_execution');
-            }
+            callback(value);
         } catch (ex) {
-            // IMPROVED: Only log unexpected errors, not every callback issue
-            console.error(`Unexpected error processing dependency ${depId}: ${ex.message}`);
+            handleCallbackError(depId, callback, value, ex, 'callback_execution');
         }
     });
 };
 
-// IMPROVED: Optimized map implementation
 const map = (f) => (timelineA) => {
     const initialB = f(timelineA.at(Now));
     const timelineB = Timeline(initialB);
     const reactionFn = (valueA) => {
         try {
-            const newValueB = f(valueA);
-            timelineB.define(Now, newValueB);
+            timelineB.define(Now, f(valueA));
         } catch (ex) {
             handleCallbackError('map', f, valueA, ex, 'map_function');
         }
     };
-    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFn, undefined);
+    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFn, undefined, undefined);
     return timelineB;
 };
 
-// IMPROVED: Nullable-aware nMap with better error handling
 const nMap = (f) => (timelineA) => {
     const currentValueA = timelineA.at(Now);
-    const initialB = isNull(currentValueA) ? null : f(currentValueA);
+    let initialB;
+    if (isNull(currentValueA)) {
+        initialB = null;
+    } else {
+        initialB = f(currentValueA);
+    }
     const timelineB = Timeline(initialB);
     const reactionFn = (valueA) => {
         try {
-            const newValueB = isNull(valueA) ? null : f(valueA);
-            timelineB.define(Now, newValueB);
+            if (isNull(valueA)) {
+                timelineB.define(Now, null);
+            } else {
+                timelineB.define(Now, f(valueA));
+            }
         } catch (ex) {
-            handleCallbackError('nMap', f, valueA, ex, 'nmap_function');
+            handleCallbackError('nMap', f, valueA, ex, 'map_function');
         }
     };
-    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFn, undefined);
+    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFn, undefined, undefined);
     return timelineB;
 };
 
-// IMPROVED: Enhanced bind with better scope management and error handling
 const bind = (monadf) => (timelineA) => {
-    let initialInnerTimeline = monadf(timelineA.at(Now));
+    const initialInnerTimeline = monadf(timelineA.at(Now));
     const timelineB = Timeline(initialInnerTimeline.at(Now));
     let currentScopeId = DependencyCore.createScope();
-
     const setUpInnerReaction = (innerTimeline, scopeForInner) => {
         const reactionFnInnerToB = (valueInner) => {
-            // IMPROVED: Better scope validation
             if (currentScopeId === scopeForInner) {
                 timelineB.define(Now, valueInner);
             }
-            // No warning for scope mismatch - it's expected during transitions
         };
-        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner);
+        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner, undefined);
     };
-
     setUpInnerReaction(initialInnerTimeline, currentScopeId);
-
     const reactionFnAtoB = (valueA) => {
         try {
-            // IMPROVED: Clean scope management
-            DependencyCore.disposeScope(currentScopeId); // Dispose old inner timeline dependencies
-            currentScopeId = DependencyCore.createScope(); // Create new scope for new inner timeline
+            DependencyCore.disposeScope(currentScopeId);
+            currentScopeId = DependencyCore.createScope();
             const newInnerTimeline = monadf(valueA);
-            timelineB.define(Now, newInnerTimeline.at(Now)); // Propagate initial value of new inner timeline
-            setUpInnerReaction(newInnerTimeline, currentScopeId); // Set up new inner timeline reactions
+            timelineB.define(Now, newInnerTimeline.at(Now));
+            setUpInnerReaction(newInnerTimeline, currentScopeId);
         } catch (ex) {
             handleCallbackError('bind', monadf, valueA, ex, 'bind_transition');
         }
     };
-
-    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined);
+    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined, undefined);
     return timelineB;
 };
 
-// IMPROVED: Enhanced nBind with better null handling and error management
 const nBind = (monadf) => (timelineA) => {
     const initialValueA = timelineA.at(Now);
     let initialInnerTimeline;
-
-    try {
-        if (isNull(initialValueA)) {
-            initialInnerTimeline = Timeline(null); // Default of 'B' is null for nullable bind
-        } else {
-            initialInnerTimeline = monadf(initialValueA);
-        }
-    } catch (ex) {
-        // IMPROVED: Handle initial value computation errors gracefully
-        console.warn(`nBind initial value computation failed, using null timeline: ${ex.message}`);
+    if (isNull(initialValueA)) {
         initialInnerTimeline = Timeline(null);
+    } else {
+        try {
+            initialInnerTimeline = monadf(initialValueA);
+        } catch (ex) {
+            handleCallbackError('nBind_initial', monadf, initialValueA, ex);
+            initialInnerTimeline = Timeline(null);
+        }
     }
-
     const timelineB = Timeline(initialInnerTimeline.at(Now));
     let currentScopeId = DependencyCore.createScope();
-
     const setUpInnerReaction = (innerTimeline, scopeForInner) => {
         const reactionFnInnerToB = (valueInner) => {
             if (currentScopeId === scopeForInner) {
                 timelineB.define(Now, valueInner);
             }
         };
-        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner);
+        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner, undefined);
     };
-
     setUpInnerReaction(initialInnerTimeline, currentScopeId);
-
     const reactionFnAtoB = (valueA) => {
         try {
             DependencyCore.disposeScope(currentScopeId);
@@ -261,204 +406,341 @@ const nBind = (monadf) => (timelineA) => {
             setUpInnerReaction(newInnerTimeline, currentScopeId);
         } catch (ex) {
             handleCallbackError('nBind', monadf, valueA, ex, 'nbind_transition');
-            // On error, create a null timeline to maintain consistency
             const fallbackTimeline = Timeline(null);
             timelineB.define(Now, null);
             setUpInnerReaction(fallbackTimeline, currentScopeId);
         }
     };
-
-    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined);
+    DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined, undefined);
     return timelineB;
 };
 
-// IMPROVED: Enhanced scan with better error handling
 const scan = (accumulator) => (initialState) => (sourceTimeline) => {
     const stateTimeline = Timeline(initialState);
-    sourceTimeline.map((input) => {
+    const reactionFn = (input) => {
         try {
-            const currentState = stateTimeline.at(Now);
-            const newState = accumulator(currentState, input);
-            stateTimeline.define(Now, newState);
+            stateTimeline.define(Now, accumulator(stateTimeline.at(Now), input));
         } catch (ex) {
             handleCallbackError('scan', accumulator, input, ex, 'scan_accumulator');
         }
-        return undefined; // map expects a return value, but it's ignored for side-effects here
-    });
+    };
+    DependencyCore.registerDependency(sourceTimeline[_id], stateTimeline[_id], reactionFn, undefined, undefined);
+    stateTimeline.define(Now, accumulator(initialState, sourceTimeline.at(Now)));
     return stateTimeline;
 };
 
-// IMPROVED: More efficient link implementation
 const link = (targetTimeline) => (sourceTimeline) => {
-    // The map function itself creates the dependency and handles initial value propagation
-    // via its internal reactionFn and initialB calculation.
-    sourceTimeline.map((value) => {
-        targetTimeline.define(Now, value);
-        return undefined; // map expects a return value, but it's for side-effects
-    });
+    const reactionFn = (value) => targetTimeline.define(Now, value);
+    reactionFn(sourceTimeline.at(Now));
+    DependencyCore.registerDependency(sourceTimeline[_id], targetTimeline[_id], reactionFn, undefined, undefined);
 };
 
-// IMPROVED: More efficient distinctUntilChanged
 const distinctUntilChanged = (sourceTimeline) => {
-    const initialValue = sourceTimeline.at(Now);
-    const resultTimeline_instance = Timeline(initialValue);
-    // F# uses a Timeline to hold the last propagated value, mirroring that here.
-    const lastPropagatedTimeline = Timeline(initialValue);
-    sourceTimeline.map((currentValue) => {
-        const lastPropagatedValue = lastPropagatedTimeline.at(Now); // Get from the internal Timeline
-        if (currentValue !== lastPropagatedValue) {
-            lastPropagatedTimeline.define(Now, currentValue); // Define to the internal Timeline
-            resultTimeline_instance.define(Now, currentValue);
+    let lastValue = sourceTimeline.at(Now);
+    const resultTimeline = Timeline(lastValue);
+    const reactionFn = (currentValue) => {
+        if (currentValue !== lastValue) {
+            lastValue = currentValue;
+            resultTimeline.define(Now, currentValue);
         }
-        return undefined; // map expects a return value
-    });
-    return resultTimeline_instance;
+    };
+    DependencyCore.registerDependency(sourceTimeline[_id], resultTimeline[_id], reactionFn, undefined, undefined);
+    return resultTimeline;
 };
 
-// IMPROVED: Enhanced combineLatestWith with better error handling
+const using = (resourceFactory) => (sourceTimeline) => {
+    const resultTimeline = Timeline(null);
+    let currentScopeId = null;
+    const reactionFn = (value) => {
+        try {
+            if (currentScopeId) {
+                DependencyCore.disposeScope(currentScopeId);
+            }
+            currentScopeId = DependencyCore.createScope();
+            const resourceData = resourceFactory(value);
+            if (resourceData) {
+                const { resource, cleanup } = resourceData;
+                resultTimeline.define(Now, resource);
+                DependencyCore.registerDependency(sourceTimeline[_id], resultTimeline[_id], () => { }, currentScopeId, cleanup);
+            } else {
+                resultTimeline.define(Now, null);
+            }
+        } catch (ex) {
+            handleCallbackError('using', resourceFactory, value, ex);
+        }
+    };
+    reactionFn(sourceTimeline.at(Now));
+    DependencyCore.registerDependency(sourceTimeline[_id], resultTimeline[_id], reactionFn, undefined, undefined);
+    return resultTimeline;
+};
+
+const nUsing = (resourceFactory) => (sourceTimeline) => {
+    const wrappedFactory = (value) => {
+        if (isNull(value)) { return null; }
+        return resourceFactory(value);
+    };
+    return using(wrappedFactory)(sourceTimeline);
+};
+
+export const Timeline = (initialValue) => {
+    const timelineInstance = {
+        [_id]: DependencyCore.generateTimelineId(),
+        [_last]: initialValue,
+    };
+
+    const baseTimeline = {
+        at: (now) => at(now)(timelineInstance),
+        define: (now, value) => define(now)(value)(timelineInstance),
+        map: (f) => map(f)(timelineInstance),
+        bind: (monadf) => bind(monadf)(timelineInstance),
+        scan: (accumulator, initialState) => scan(accumulator)(initialState)(timelineInstance),
+        link: (target) => link(target)(timelineInstance),
+        distinctUntilChanged: () => distinctUntilChanged(timelineInstance),
+        using: (resourceFactory) => using(resourceFactory)(timelineInstance)
+    };
+
+    if (initialValue == null) {
+        return Object.assign(timelineInstance, baseTimeline, {
+            nMap: (f) => nMap(f)(timelineInstance),
+            nBind: (monadf) => nBind(monadf)(timelineInstance),
+            nUsing: (resourceFactory) => nUsing(resourceFactory)(timelineInstance)
+        });
+    }
+
+    return Object.assign(timelineInstance, baseTimeline);
+};
+
+export const ID = (initialValue) => Timeline(initialValue);
+export const FalseTimeline = Timeline(false);
+export const TrueTimeline = Timeline(true);
+
+export const pipeBind = (f) => (g) => (a) => {
+    const timelineFromF = f(a);
+    return timelineFromF.bind(g);
+};
+
+export const DebugUtils = {
+    getInfo: DependencyCore.getDebugInfo,
+    printTree: DependencyCore.printDebugTree
+};
+
+// =============================================================================
+// ===== 刷新された合成関数セクション (ここから) =====
+// =============================================================================
+
 export const combineLatestWith = (f) => (timelineA) => (timelineB) => {
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
-
-    let initialResult;
-    try {
-        initialResult = f(latestA, latestB);
-    } catch (ex) {
-        handleCallbackError('combineLatestWith', f, [latestA, latestB], ex, 'combine_initial');
-        initialResult = null; // Fallback to null on error
-    }
-
-    const resultTimeline_instance = Timeline(initialResult);
+    const resultTimeline = Timeline(f(latestA, latestB));
 
     const reactionA = (valA) => {
-        try {
-            latestA = valA;
-            resultTimeline_instance.define(Now, f(latestA, latestB));
-        } catch (ex) {
-            handleCallbackError('combineLatestWith', f, [valA, latestB], ex, 'combine_reaction_a');
-        }
+        latestA = valA;
+        resultTimeline.define(Now, f(latestA, latestB));
     };
-    DependencyCore.registerDependency(timelineA[_id], resultTimeline_instance[_id], reactionA, undefined);
+    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, undefined, undefined);
 
     const reactionB = (valB) => {
-        try {
-            latestB = valB;
-            resultTimeline_instance.define(Now, f(latestA, latestB));
-        } catch (ex) {
-            handleCallbackError('combineLatestWith', f, [latestA, valB], ex, 'combine_reaction_b');
-        }
+        latestB = valB;
+        resultTimeline.define(Now, f(latestA, latestB));
     };
-    DependencyCore.registerDependency(timelineB[_id], resultTimeline_instance[_id], reactionB, undefined);
+    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, undefined, undefined);
 
-    return resultTimeline_instance;
+    return resultTimeline;
 };
 
-// IMPROVED: Enhanced nCombineLatestWith
 export const nCombineLatestWith = (f) => (timelineA) => (timelineB) => {
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
 
     const calculateCombinedValue = () => {
         if (isNull(latestA) || isNull(latestB)) {
-            return null; // Represents F# Unchecked.defaultof<'c'> when inputs are null
+            return null;
         }
-        try {
-            return f(latestA, latestB);
-        } catch (ex) {
-            handleCallbackError('nCombineLatestWith', f, [latestA, latestB], ex, 'ncombine_calculation');
-            return null; // Return null on error
-        }
+        return f(latestA, latestB);
     };
 
-    const resultTimeline_instance = Timeline(calculateCombinedValue());
+    const resultTimeline = Timeline(calculateCombinedValue());
 
     const reactionA = (valA) => {
         latestA = valA;
-        resultTimeline_instance.define(Now, calculateCombinedValue());
+        resultTimeline.define(Now, calculateCombinedValue());
     };
-    DependencyCore.registerDependency(timelineA[_id], resultTimeline_instance[_id], reactionA, undefined);
+    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, undefined, undefined);
 
     const reactionB = (valB) => {
         latestB = valB;
-        resultTimeline_instance.define(Now, calculateCombinedValue());
+        resultTimeline.define(Now, calculateCombinedValue());
     };
-    DependencyCore.registerDependency(timelineB[_id], resultTimeline_instance[_id], reactionB, undefined);
+    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, undefined, undefined);
 
-    return resultTimeline_instance;
+    return resultTimeline;
 };
 
-// MAINTAINED: Or and And operations (API unchanged)
-export const Or = (timelineA) => (timelineB) => {
-    const zipResult = nCombineLatestWith((a, b) => a || b)(timelineA)(timelineB);
-    return map((value) => value === null ? false : value)(zipResult);
+const orOf = (timelineA, timelineB) =>
+    combineLatestWith((a, b) => a || b)(timelineA)(timelineB);
+
+const andOf = (timelineA, timelineB) =>
+    combineLatestWith((a, b) => a && b)(timelineA)(timelineB);
+
+const addOf = (timelineA, timelineB) =>
+    combineLatestWith((a, b) => a + b)(timelineA)(timelineB);
+
+const maxOf2 = (timelineA, timelineB) =>
+    combineLatestWith((a, b) => Math.max(a, b))(timelineA)(timelineB);
+
+const minOf2 = (timelineA, timelineB) =>
+    combineLatestWith((a, b) => Math.min(a, b))(timelineA)(timelineB);
+
+const concatOf = (timelineA, timelineB) =>
+    combineLatestWith((arrayA, valueB) => arrayA.concat(valueB))(timelineA)(timelineB);
+
+
+export const foldTimelines = (timelines, initialTimeline, accumulator) => {
+    return timelines.reduce(accumulator, initialTimeline);
 };
 
-export const And = (timelineA) => (timelineB) => {
-    const zipResult = nCombineLatestWith((a, b) => a && b)(timelineA)(timelineB);
-    return map((value) => value === null ? false : value)(zipResult);
+
+export const anyOf = (booleanTimelines) => {
+    return foldTimelines(booleanTimelines, FalseTimeline, orOf);
 };
 
-// MAINTAINED: Timeline factory with exact same API
-export const Timeline = (initialValue) => ({
-    [_id]: DependencyCore.generateTimelineId(),
-    [_last]: initialValue,
-    at: function (nowInstance) {
-        return at(nowInstance)(this);
-    },
-    define: function (nowInstance, value) {
-        define(nowInstance)(value)(this);
-    },
-    // Raw versions - API maintained exactly
-    map: function (f) {
-        return map(f)(this);
-    },
-    bind: function (monadf) {
-        return bind(monadf)(this);
-    },
-    // Nullable-aware versions - API maintained exactly
-    nMap: function (f) {
-        return nMap(f)(this);
-    },
-    nBind: function (monadf) {
-        return nBind(monadf)(this);
-    },
-    link: function (targetTimeline) {
-        link(targetTimeline)(this);
-    },
-    scan: function (accumulator, initialState) {
-        return scan(accumulator)(initialState)(this);
-    },
-    distinctUntilChanged: function () {
-        return distinctUntilChanged(this);
-    },
-    // Logical operators - API maintained exactly
-    Or: function (timelineB_param) {
-        return Or(this)(timelineB_param);
-    },
-    And: function (timelineB_param) {
-        return And(this)(timelineB_param);
-    },
-});
-
-// MAINTAINED: All exported utilities with exact same API
-export const ID = (initialValue) => Timeline(initialValue);
-export const FalseTimeline = Timeline(false);
-export const TrueTimeline = Timeline(true);
-
-export const any = (booleanTimelines) => {
-    if (booleanTimelines.length === 0)
-        return FalseTimeline;
-    return booleanTimelines.reduce((acc, elem) => Or(acc)(elem), FalseTimeline);
+export const allOf = (booleanTimelines) => {
+    return foldTimelines(booleanTimelines, TrueTimeline, andOf);
 };
 
-export const all = (booleanTimelines) => {
-    if (booleanTimelines.length === 0)
-        return TrueTimeline;
-    return booleanTimelines.reduce((acc, elem) => And(acc)(elem), TrueTimeline);
+export const sumOf = (numberTimelines) => {
+    return foldTimelines(numberTimelines, Timeline(0), addOf);
 };
 
-// MAINTAINED: Monadic composition operator
-export const pipeBind = (f) => (g) => (a) => {
-    const timelineFromF = f(a);
-    return timelineFromF.bind(g);
+export const maxOf = (numberTimelines) => {
+    return foldTimelines(numberTimelines, Timeline(-Infinity), maxOf2);
 };
+
+export const minOf = (numberTimelines) => {
+    return foldTimelines(numberTimelines, Timeline(Infinity), minOf2);
+};
+
+export const averageOf = (numberTimelines) => {
+    if (numberTimelines.length === 0) return Timeline(0);
+    return sumOf(numberTimelines).map(sum => sum / numberTimelines.length);
+};
+
+export const listOf = (timelines) => {
+    const emptyArrayTimeline = Timeline([]);
+    return foldTimelines(timelines, emptyArrayTimeline, concatOf);
+};
+
+
+// --- Nullable版の応用関数 ---
+
+// Nullable版の二項演算子
+const nOrOf = (timelineA, timelineB) =>
+    nCombineLatestWith((a, b) => a || b)(timelineA)(timelineB);
+
+const nAndOf = (timelineA, timelineB) =>
+    nCombineLatestWith((a, b) => a && b)(timelineA)(timelineB);
+
+const nAddOf = (timelineA, timelineB) =>
+    nCombineLatestWith((a, b) => a + b)(timelineA)(timelineB);
+
+const nConcatOf = (timelineA, timelineB) =>
+    nCombineLatestWith((arrayA, valueB) => arrayA.concat(valueB))(timelineA)(timelineB);
+
+// Nullable版の高レベルヘルパー関数
+export const nAnyOf = (booleanTimelines) => {
+    return foldTimelines(booleanTimelines, FalseTimeline, nOrOf);
+};
+
+export const nAllOf = (booleanTimelines) => {
+    return foldTimelines(booleanTimelines, TrueTimeline, nAndOf);
+};
+
+export const nSumOf = (numberTimelines) => {
+    return foldTimelines(numberTimelines, Timeline(0), nAddOf);
+};
+
+export const nListOf = (timelines) => {
+    const emptyArrayTimeline = Timeline([]);
+    return foldTimelines(timelines, emptyArrayTimeline, nConcatOf);
+};
+
+
+// --- 特殊ケースのためのユーティリティ ---
+export const combineLatest = (combinerFn) => (timelines) => {
+    if (!Array.isArray(timelines) || timelines.length === 0) {
+        return Timeline([]);
+    }
+    if (timelines.length === 1) {
+        return timelines[0].map(value => combinerFn(...[value]));
+    }
+
+    const arrayTimeline = timelines.reduce(
+        (acc, timeline, index) => {
+            if (index === 0) {
+                return timeline.map(value => [value]);
+            }
+            return combineLatestWith((accArray, newValue) => [...accArray, newValue])(acc)(timeline);
+        },
+        undefined
+    );
+
+    return arrayTimeline.map(valueArray => combinerFn(...valueArray));
+};
+
+export const nCombineLatest = (combinerFn) => (timelines) => {
+    if (!Array.isArray(timelines) || timelines.length === 0) {
+        return Timeline(null);
+    }
+
+    const arrayTimeline = timelines.reduce(
+        (acc, timeline, index) => {
+            if (index === 0) {
+                return timeline.nMap(value => [value]);
+            }
+            return nCombineLatestWith(
+                (accArray, newValue) => [...accArray, newValue]
+            )(acc)(timeline);
+        },
+        undefined
+    );
+
+    return arrayTimeline.nMap(valueArray => combinerFn(...valueArray));
+};
+
+
+// -----------------------------------------------------------------------------
+// 使用例とテスト (JS版から移植)
+// -----------------------------------------------------------------------------
+const demonstrateUsage = () => {
+    console.log('=== combineLatest Demo ===');
+
+    const timeline1 = Timeline(1);
+    const timeline2 = Timeline(2);
+    const timeline3 = Timeline(3);
+    const timeline4 = Timeline(4);
+
+    console.log('\n=== fold-based helpers Demo ===');
+    const boolTimelines = [Timeline(true), Timeline(false), Timeline(true)];
+    const numberTimelines = [Timeline(10), Timeline(20), Timeline(30)];
+
+    console.log('Any result:', anyOf(boolTimelines).at(Now));
+    console.log('All result:', allOf(boolTimelines).at(Now));
+    console.log('Sum result:', sumOf(numberTimelines).at(Now));
+    console.log('Max result:', maxOf(numberTimelines).at(Now));
+    console.log('Min result:', minOf(numberTimelines).at(Now));
+    console.log('Average result:', averageOf(numberTimelines).at(Now));
+
+    const listResult = listOf([timeline1, timeline2, timeline3]);
+    console.log('List result:', listResult.at(Now));
+
+    const sumTimeline = combineLatest(
+        (a, b, c, d) => a + b + c + d
+    )([timeline1, timeline2, timeline3, timeline4]);
+
+    console.log('Initial sum:', sumTimeline.at(Now));
+
+    timeline1.define(Now, 10);
+    console.log('After updating timeline1:', sumTimeline.at(Now));
+};
+
+// demonstrateUsage();
