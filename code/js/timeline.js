@@ -709,38 +709,57 @@ export const nCombineLatest = (combinerFn) => (timelines) => {
 
 
 // -----------------------------------------------------------------------------
-// 使用例とテスト (JS版から移植)
+// 使用例とテスト
 // -----------------------------------------------------------------------------
-const demonstrateUsage = () => {
-    console.log('=== combineLatest Demo ===');
 
+const demonstrateUsage = () => {
+    // --- セットアップ ---
+    // テストで使用する基本的なタイムラインを準備します。
+    console.log('=== Setting up initial timelines ===');
     const timeline1 = Timeline(1);
     const timeline2 = Timeline(2);
     const timeline3 = Timeline(3);
     const timeline4 = Timeline(4);
 
-    console.log('\n=== fold-based helpers Demo ===');
+    // --- foldベースのヘルパー関数のデモ (推奨される標準的な方法) ---
+    console.log('\n=== fold-based helpers (Recommended) Demo ===');
     const boolTimelines = [Timeline(true), Timeline(false), Timeline(true)];
-    const numberTimelines = [Timeline(10), Timeline(20), Timeline(30)];
+    const numberTimelines = [10, 20, 30].map(Timeline);
 
-    console.log('Any result:', anyOf(boolTimelines).at(Now));
-    console.log('All result:', allOf(boolTimelines).at(Now));
-    console.log('Sum result:', sumOf(numberTimelines).at(Now));
-    console.log('Max result:', maxOf(numberTimelines).at(Now));
-    console.log('Min result:', minOf(numberTimelines).at(Now));
-    console.log('Average result:', averageOf(numberTimelines).at(Now));
+    // 各ヘルパー関数の初期値を確認します。
+    console.log('anyOf([true, false, true]):', anyOf(boolTimelines).at(Now));       // true
+    console.log('allOf([true, false, true]):', allOf(boolTimelines).at(Now));       // false
+    console.log('sumOf([10, 20, 30]):', sumOf(numberTimelines).at(Now));       // 60
+    console.log('maxOf([10, 20, 30]):', maxOf(numberTimelines).at(Now));       // 30
+    console.log('minOf([10, 20, 30]):', minOf(numberTimelines).at(Now));       // 10
+    console.log('averageOf([10, 20, 30]):', averageOf(numberTimelines).at(Now)); // 20
 
+    // Use `listOf` to "combine" multiple timelines into a list
+    // listOf: タイムラインの配列を、値の配列を持つ単一のタイムラインに変換します。
     const listResult = listOf([timeline1, timeline2, timeline3]);
-    console.log('List result:', listResult.at(Now));
+    console.log('listOf([t1, t2, t3]) initial:', listResult.at(Now)); // [1, 2, 3]
 
+    // --- combineLatest のデモ (特殊ケース・N項演算用) ---
+    console.log('\n=== combineLatest (for complex, non-foldable functions) Demo ===');
+    // `combineLatest` は、foldで表現できない複雑なN項関数で結合する場合に使います。
     const sumTimeline = combineLatest(
         (a, b, c, d) => a + b + c + d
     )([timeline1, timeline2, timeline3, timeline4]);
 
-    console.log('Initial sum:', sumTimeline.at(Now));
+    // 初期値の合計: 1 + 2 + 3 + 4 = 10
+    console.log('combineLatest sum (initial):', sumTimeline.at(Now));
 
+    // --- リアクティブな更新のテスト ---
+    console.log('\n=== Reactivity Test ===');
+    // timeline1の値を更新すると、それに依存する全てのタイムライン (`listResult`, `sumTimeline`)が
+    // 自動的に新しい値を反映することを確認します。
+    console.log('Updating timeline1 from 1 to 10...');
     timeline1.define(Now, 10);
-    console.log('After updating timeline1:', sumTimeline.at(Now));
+    console.log('... update complete.');
+    console.log('listOf result after update:', listResult.at(Now)); // [10, 2, 3]
+    console.log('combineLatest sum after update:', sumTimeline.at(Now)); // 10 + 2 + 3 + 4 = 19
 };
 
+// デモを実行したい場合は以下のコメントを外してください
 // demonstrateUsage();
+
