@@ -734,8 +734,13 @@ const demonstrateUsage = () => {
     console.log('minOf([10, 20, 30]):', minOf(numberTimelines).at(Now));       // 10
     console.log('averageOf([10, 20, 30]):', averageOf(numberTimelines).at(Now)); // 20
 
-    // Use `listOf` to "combine" multiple timelines into a list
-    // listOf: タイムラインの配列を、値の配列を持つ単一のタイムラインに変換します。
+    /**
+     * --- listOf のデモ (複数タイムラインの結合) ---
+     * `listOf` は、複数のタイムラインを単一のタイムラインに結合し、
+     * その値を配列として提供します。
+     * 
+     * 注意: `listOf` は、配列の要素がすべて同じ型であることを前提としています。
+    */
     const listResult = listOf([timeline1, timeline2, timeline3]);
     console.log('listOf([t1, t2, t3]) initial:', listResult.at(Now)); // [1, 2, 3]
 
