@@ -614,12 +614,18 @@ module TL =
 
     let nMaxOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
         let nMaxOf2 (acc: Timeline<System.Nullable<float>>) (curr: Timeline<System.Nullable<float>>) =
-            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) -> System.Nullable(max a.Value b.Value)) acc curr
+            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) ->
+                if a.HasValue && b.HasValue then System.Nullable(max a.Value b.Value)
+                else if a.HasValue then a
+                else b) acc curr
         foldTimelines nMaxOf2 (Timeline(System.Nullable System.Double.NegativeInfinity)) numberTimelines
 
     let nMinOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
         let nMinOf2 (acc: Timeline<System.Nullable<float>>) (curr: Timeline<System.Nullable<float>>) =
-            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) -> System.Nullable(min a.Value b.Value)) acc curr
+            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) ->
+                if a.HasValue && b.HasValue then System.Nullable(min a.Value b.Value)
+                else if a.HasValue then a
+                else b) acc curr
         foldTimelines nMinOf2 (Timeline(System.Nullable System.Double.PositiveInfinity)) numberTimelines
 
     let nAverageOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
@@ -627,8 +633,10 @@ module TL =
             Timeline(System.Nullable()) // null を返す
         else
             let sumTimeline = nSumOf numberTimelines
-            sumTimeline |> nMap (fun sum -> System.Nullable(sum.Value / (float numberTimelines.Length)))
-
+            sumTimeline |> nMap (fun sum ->
+                if sum.HasValue then System.Nullable(sum.Value / (float numberTimelines.Length))
+                else System.Nullable()
+            )
     // `nListOf` のためのアキュムレータ関数
     let private nConcatOf<'a when 'a : null> (accTimeline: Timeline<ResizeArray<'a>>) (currTimeline: Timeline<'a>) : Timeline<ResizeArray<'a>> =
         nCombineLatestWith (fun (arr: ResizeArray<'a>) (item: 'a) ->
@@ -683,8 +691,7 @@ module Debug =
             printfn "--------------------------------"
 
             let depsById = info.Dependencies |> List.map (fun d -> d.Id, d) |> Map.ofList
-            let scopesByParent = info.Scopes |> List.groupBy (fun s -> s.ParentScope)
-
+            let scopesByParent = info.Scopes |> List.groupBy (fun s -> s.ParentScope) |> Map.ofList
             let rec printScope (indent: string) (scope: ScopeDebugInfo) =
                 printfn "%sScope: %s..." indent (scope.ScopeId.ToString().Substring(0, 8))
                 printfn "%s  Created: %O" indent (System.DateTimeOffset.FromUnixTimeMilliseconds(scope.CreatedAt))
