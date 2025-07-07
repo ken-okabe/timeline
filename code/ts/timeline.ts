@@ -17,7 +17,7 @@ interface DependencyDetails {
     onDispose: DisposeCallback | undefined;
 }
 
-// --- 改良: 型安全なResource定義 ---
+// --- Improvement: Type-safe Resource definition ---
 interface Resource<A> {
     readonly resource: A;
     readonly cleanup: DisposeCallback;
@@ -30,7 +30,7 @@ export const createResource = <A>(resource: A, cleanup: DisposeCallback): Resour
     cleanup
 } as const);
 
-// --- 改良: デバッグ情報の型定義 ---
+// --- Improvement: Type definitions for debug information ---
 interface DebugInfo {
     scopeId: ScopeId;
     dependencyIds: DependencyId[];
@@ -47,70 +47,70 @@ interface DependencyDebugInfo {
     createdAt: number;
 }
 
-// --- 改良: 環境に依存しないデバッグモード判定 ---
+// --- Improvement: Environment-independent debug mode determination ---
 // Add global declaration for process to avoid TypeScript error in browser context
 declare var process: any;
 
 const debugMode = (() => {
-    // Node.js環境での判定
+    // Check in Node.js environment
     if (typeof process !== 'undefined' && process.env) {
         return process.env.NODE_ENV === 'development';
     }
 
-    // ブラウザ環境での判定（より厳密なチェック）
+    // Check in browser environment (more strict check)
     if (
         typeof window !== 'undefined' &&
         typeof window.location !== 'undefined' &&
         typeof URLSearchParams !== 'undefined'
     ) {
-        // 1. URLパラメータでの制御
+        // 1. Control via URL parameter
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('debug')) {
             return urlParams.get('debug') !== 'false';
         }
 
-        // 2. localStorageでの制御（永続化）
+        // 2. Control via localStorage (persistence)
         try {
             const debugFlag = localStorage.getItem('timeline-debug');
             if (debugFlag !== null) {
                 return debugFlag === 'true';
             }
         } catch (e) {
-            // localStorage が使えない環境では無視
+            // Ignore if localStorage is not available
         }
 
-        // 3. developmentビルドの検出（webpack等）
+        // 3. Detect development build (e.g., webpack)
         // @ts-ignore
         if (typeof __DEV__ !== 'undefined') {
             // @ts-ignore
             return __DEV__;
         }
 
-        // 4. 本番環境の検出（一般的なパターン）
+        // 4. Detect production environment (common patterns)
         if (window.location.hostname === 'localhost' ||
             window.location.hostname === '127.0.0.1' ||
             window.location.hostname.startsWith('192.168.') ||
             window.location.port !== '') {
-            return true; // 開発環境と推定
+            return true; // Estimated as development environment
         }
     }
 
-    // デフォルトは無効
+    // Default is disabled
     return false;
 })();
 
-// DependencyCore内で使用する際の判定関数
+// Judgment function for use within DependencyCore
 const isDebugEnabled = (): boolean => {
-    // 一時的な有効化をチェック
+    // Check for temporary enablement
     if (typeof window !== 'undefined' && (window as any).__TIMELINE_DEBUG_TEMP__) {
         return true;
     }
     return debugMode;
 };
 
-// より柔軟な制御のためのユーティリティ関数
+// Utility functions for more flexible control
 export const DebugControl = {
-    // 動的にデバッグモードを有効/無効化
+    // Dynamically enable/disable debug mode
     enable: () => {
         if (typeof window !== 'undefined') {
             try {
@@ -133,10 +133,10 @@ export const DebugControl = {
         }
     },
 
-    // 現在の状態を確認
+    // Check current state
     isEnabled: () => isDebugEnabled(),
 
-    // セッション中の一時的な有効化（リロード不要）
+    // Temporarily enable during the session (no reload required)
     enableTemporary: () => {
         if (typeof window !== 'undefined') {
             (window as any).__TIMELINE_DEBUG_TEMP__ = true;
@@ -146,14 +146,14 @@ export const DebugControl = {
 };
 
 // -----------------------------------------------------------------------------
-// DependencyCore: デバッグ支援強化版
+// DependencyCore: Enhanced Debugging Support Version
 // -----------------------------------------------------------------------------
 namespace DependencyCore {
     const dependencies = new Map<DependencyId, DependencyDetails>();
     const sourceIndex = new Map<TimelineId, DependencyId[]>();
     const scopeIndex = new Map<ScopeId, DependencyId[]>();
 
-    // デバッグ関連
+    // Debugging related
     const scopeDebugInfo = new Map<ScopeId, DebugInfo>();
     const dependencyDebugInfo = new Map<DependencyId, DependencyDebugInfo>();
 
@@ -247,7 +247,7 @@ namespace DependencyCore {
                 try {
                     details.onDispose();
                 } catch (ex: any) {
-                    console.error(`Error during onDispose for dependency ${depId}: ${ex.message}`);
+                    console.error(`Error during onDispose for dependency ${ depId }: ${ ex.message } `);
                 }
             }
             dependencies.delete(depId);
@@ -321,21 +321,21 @@ namespace DependencyCore {
 
         const info = getDebugInfo();
         console.group('Timeline Dependency Tree');
-        console.log(`Total Scopes: ${info.totalScopes}`);
-        console.log(`Total Dependencies: ${info.totalDependencies}`);
+        console.log(`Total Scopes: ${ info.totalScopes } `);
+        console.log(`Total Dependencies: ${ info.totalDependencies } `);
 
         info.scopes.forEach(scope => {
-            console.group(`Scope: ${scope.scopeId.substring(0, 8)}...`);
-            console.log(`Created: ${new Date(scope.createdAt).toISOString()}`);
-            console.log(`Dependencies: ${scope.dependencyIds.length}`);
+            console.group(`Scope: ${ scope.scopeId.substring(0, 8) }...`);
+            console.log(`Created: ${ new Date(scope.createdAt).toISOString() } `);
+            console.log(`Dependencies: ${ scope.dependencyIds.length } `);
             if (scope.parentScope) {
-                console.log(`Parent: ${scope.parentScope.substring(0, 8)}...`);
+                console.log(`Parent: ${ scope.parentScope.substring(0, 8) }...`);
             }
 
             scope.dependencyIds.forEach(depId => {
                 const dep = info.dependencies.find(d => d.id === depId);
                 if (dep) {
-                    console.log(`  - ${depId.substring(0, 8)}... (cleanup: ${dep.hasCleanup})`);
+                    console.log(`  - ${ depId.substring(0, 8) }... (cleanup: ${ dep.hasCleanup })`);
                 }
             });
             console.groupEnd();
@@ -360,10 +360,10 @@ const handleCallbackError = (
     context: string = 'general'
 ): void => {
     if (context === 'scope_mismatch' || context === 'bind_transition') {
-        console.debug(`Transition info [${context}] for ${depId}: ${ex.message}`);
+        console.debug(`Transition info[${ context }]for ${ depId }: ${ ex.message } `);
         return;
     }
-    console.warn(`Callback error [${context}] for dependency ${depId}: ${ex.message}`, {
+    console.warn(`Callback error[${ context }]for dependency ${ depId }: ${ ex.message } `, {
         inputValue: value,
         callbackType: typeof callback
     });
@@ -530,7 +530,7 @@ const distinctUntilChanged = <A>(sourceTimeline: Timeline<A>): Timeline<A> => {
 };
 
 // -----------------------------------------------------------------------------
-// 改良されたリソース管理プリミティブの実装
+// Implementation of improved resource management primitives
 // -----------------------------------------------------------------------------
 const using = <A, B>(resourceFactory: ResourceFactory<A, B>) => (sourceTimeline: Timeline<A>): Timeline<B | null> => {
     const resultTimeline = Timeline<B | null>(null);
@@ -567,7 +567,7 @@ const nUsing = <A, B>(resourceFactory: ResourceFactory<A, B>) => (sourceTimeline
 };
 
 // -----------------------------------------------------------------------------
-// Timeline Interface & Factory: 進化の統合
+// Timeline Interface & Factory: Integration of Evolution
 // -----------------------------------------------------------------------------
 export interface Timeline<A> {
     readonly [_id]: TimelineId;
@@ -605,8 +605,8 @@ export const Timeline = <A>(initialValue: A): Timeline<A> & (A extends null | un
         using: <B>(resourceFactory: ResourceFactory<A, B>): Timeline<B | null> => using<A, B>(resourceFactory)(timelineInstance as Timeline<A>)
     };
 
-    // ★★★ 修正箇所 ★★★
-    // initialValueがnullまたはundefinedの場合のみNullableTimelineを返すように修正
+    // ★★★ Correction Point ★★★
+    // Corrected to return NullableTimeline only when initialValue is null or undefined
     if ((initialValue as any) == null) {
         return Object.assign(timelineInstance, baseTimeline, {
             nMap: <B>(f: (value: Exclude<A, null | undefined>) => B): Timeline<B | null> =>
@@ -639,10 +639,10 @@ export const DebugUtils = {
 };
 
 // =============================================================================
-// ===== 刷新された合成関数セクション (ここから) =====
+// ===== Refreshed Composition Functions Section (Start) =====
 // =============================================================================
 
-// --- レベル1: 基本的な二項演算の器（二項演算なので３つ以上は使えない） ---
+// --- Level 1: Basic binary operation container (cannot be used for 3 or more arguments as it's binary) ---
 export const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineA: Timeline<A>) => (timelineB: Timeline<B>): Timeline<C> => {
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
@@ -663,7 +663,7 @@ export const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timel
     return resultTimeline;
 };
 
-// ---  (Nullable版) ---
+// --- (Nullable version) ---
 export const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineA: Timeline<A | null>) => (timelineB: Timeline<B | null>): Timeline<C | null> => {
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
@@ -692,7 +692,7 @@ export const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (time
     return resultTimeline;
 };
 
-// --- レベル2: 具体的な二項演算の定義 ---
+// --- Level 2: Definition of concrete binary operations ---
 const orOf = (timelineA: Timeline<boolean>, timelineB: Timeline<boolean>): Timeline<boolean> =>
     combineLatestWith((a: boolean, b: boolean) => a || b)(timelineA)(timelineB);
 
@@ -711,7 +711,7 @@ const minOf2 = (timelineA: Timeline<number>, timelineB: Timeline<number>): Timel
 const concatOf = (timelineA: Timeline<any[]>, timelineB: Timeline<any>): Timeline<any[]> =>
     combineLatestWith((arrayA: any[], valueB: any) => arrayA.concat(valueB))(timelineA)(timelineB);
 
-// --- レベル3: 汎用的な畳み込み ---
+// --- Level 3: Generic folding ---
 export const foldTimelines = <A, B>(
     timelines: readonly Timeline<A>[],
     initialTimeline: Timeline<B>,
@@ -721,35 +721,35 @@ export const foldTimelines = <A, B>(
 };
 
 
-// --- レベル4: foldを利用した高レベルヘルパー関数の実装 ---
+// --- Level 4: Implementation of high-level helper functions using fold ---
 export const anyOf = (booleanTimelines: readonly Timeline<boolean>[]): Timeline<boolean> => {
-    // orOfによる畳み込み。単位元は `false`
+    // Folding with orOf. Identity element is `false`
     return foldTimelines(booleanTimelines, FalseTimeline, orOf);
 };
 
 export const allOf = (booleanTimelines: readonly Timeline<boolean>[]): Timeline<boolean> => {
-    // andOfによる畳み込み。単位元は `true`
+    // Folding with andOf. Identity element is `true`
     return foldTimelines(booleanTimelines, TrueTimeline, andOf);
 };
 
 export const sumOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // addOfによる畳み込み。単位元は `0`
+    // Folding with addOf. Identity element is `0`
     return foldTimelines(numberTimelines, Timeline(0), addOf);
 };
 
 export const maxOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // maxOf2による畳み込み。単位元は `-Infinity`
+    // Folding with maxOf2. Identity element is `- Infinity`
     return foldTimelines(numberTimelines, Timeline(-Infinity), maxOf2);
 };
 
 export const minOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // minOf2による畳み込み。単位元は `Infinity`
+    // Folding with minOf2. Identity element is `Infinity`
     return foldTimelines(numberTimelines, Timeline(Infinity), minOf2);
 };
 
 export const averageOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // averageは単純なfoldではないため、sumOfの結果をmapして計算する
-    if (numberTimelines.length === 0) return Timeline(0); // ゼロ除算を避ける
+    // Average is not a simple fold, so calculate by mapping the sumOf result
+    if (numberTimelines.length === 0) return Timeline(0); // Avoid division by zero
     return sumOf(numberTimelines).map(sum => sum / numberTimelines.length);
 };
 
@@ -760,10 +760,10 @@ export const listOf = <A>(
     return foldTimelines(timelines, emptyArrayTimeline, concatOf) as Timeline<A[]>;
 };
 
-// --- Nullable版の応用関数 ---
+// --- Nullable version of applied functions ---
 
-// Nullable版の二項演算子
-// --- Nullable版の二項演算子 (修正版) ---
+// Nullable version of binary operators
+// --- Nullable version of binary operators (Revised) ---
 
 const nOrOf = (timelineA: Timeline<boolean | null>, timelineB: Timeline<boolean | null>): Timeline<boolean | null> =>
     nCombineLatestWith((a: boolean, b: boolean) => a || b)(timelineA)(timelineB);
@@ -777,34 +777,34 @@ const nAddOf = (timelineA: Timeline<number | null>, timelineB: Timeline<number |
 const nConcatOf = (timelineA: Timeline<any[] | null>, timelineB: Timeline<any | null>): Timeline<any[] | null> =>
     nCombineLatestWith((arrayA: any[], valueB: any) => arrayA.concat(valueB))(timelineA)(timelineB);
 
-// Nullable版の高レベルヘルパー関数
-export const nAnyOf = (booleanTimelines) => {
+// Nullable version of high-level helper functions
+export const nAnyOf = (booleanTimelines: readonly Timeline<boolean | null>[]): Timeline<boolean | null> => {
     return foldTimelines(booleanTimelines, FalseTimeline, nOrOf);
 };
 
-export const nAllOf = (booleanTimelines) => {
+export const nAllOf = (booleanTimelines: readonly Timeline<boolean | null>[]): Timeline<boolean | null> => {
     return foldTimelines(booleanTimelines, TrueTimeline, nAndOf);
 };
 
-export const nSumOf = (numberTimelines) => {
+export const nSumOf = (numberTimelines: readonly Timeline<number | null>[]): Timeline<number | null> => {
     return foldTimelines(numberTimelines, Timeline(0), nAddOf);
 };
 
-export const nListOf = (timelines) => {
-    const emptyArrayTimeline = Timeline([]);
-    return foldTimelines(timelines, emptyArrayTimeline, nConcatOf);
+export const nListOf = (timelines: readonly Timeline<any | null>[]): Timeline<any[] | null> => {
+    const emptyArrayTimeline = Timeline<any[]>([]);
+    return foldTimelines(timelines, emptyArrayTimeline, nConcatOf) as Timeline<any[] | null>;
 };
 
-// --- 特殊ケースのためのユーティリティ ---
-// 型ヘルパー：Timelineの配列から、それが持つ値の型のタプルを抽出する
+// --- Utilities for special cases ---
+// Type helper: Extracts a tuple of value types from an array of Timelines
 type TimelinesToValues<T extends readonly Timeline<any>[]> = {
     -readonly [P in keyof T]: T[P] extends Timeline<infer V> ? V : never
 };
 
 /**
- * 複数のタイムラインを、foldでは表現できない複雑なN項関数で結合するための汎用ユーティリティ。
- * (例: (a, b, c) => (a + b) / c)
- * 通常は、より宣言的な `anyOf`, `sumOf`, `listOf` の使用を推奨。
+ * A generic utility to combine multiple timelines with a complex N-ary function that cannot be expressed with fold.
+ * (e.g., (a, b, c) => (a + b) / c)
+ * Generally, it is recommended to use the more declarative `anyOf`, `sumOf`, `listOf`.
  */
 export const combineLatest = <T extends readonly Timeline<any>[], R>(
     combinerFn: (...values: TimelinesToValues<T>) => R
@@ -833,8 +833,8 @@ export const combineLatest = <T extends readonly Timeline<any>[], R>(
 };
 
 /**
- * 複数のタイムラインを結合する汎用ユーティリティのNullable版。
- * 入力されるタイムラインのいずれかがnullを持つ場合、結果もnullとなる。
+ * Nullable version of the generic utility to combine multiple timelines.
+ * If any of the input timelines contain null, the result will also be null.
  */
 export const nCombineLatest = <T extends readonly Timeline<any | null>[], R>(
     combinerFn: (...values: TimelinesToValues<T>) => R
@@ -844,15 +844,15 @@ export const nCombineLatest = <T extends readonly Timeline<any | null>[], R>(
         return Timeline(null);
     }
 
-    // reduceを使って、値の配列を持つタイムライン、またはnullを持つタイムラインを生成する
+    // Use reduce to generate a timeline with an array of values, or a timeline with null
     const arrayTimeline = timelines.reduce(
         (acc, timeline, index) => {
             if (index === 0) {
-                // 最初の要素: nMapを使い、値がnullなら結果もnull、さもなければ配列でラップする
+                // First element: use nMap, if value is null then result is null, otherwise wrap in an array
                 return (timeline as NullableTimeline<any>).nMap(value => [value]);
             }
-            // 2番目以降の要素: nCombineLatestWithを使い、nullを伝播させながら配列に要素を追加する
-            // ★★★ 修正箇所 ★★★
+            // Subsequent elements: use nCombineLatestWith to add elements to the array while propagating null
+            // ★★★ Correction Point ★★★
             return nCombineLatestWith(
                 (accArray: any[], newValue: any) => [...accArray, newValue]
             )(acc as Timeline<any[] | null>)(timeline);
@@ -860,31 +860,31 @@ export const nCombineLatest = <T extends readonly Timeline<any | null>[], R>(
         undefined as unknown as Timeline<any[] | null>
     );
 
-    // 最終結果: arrayTimelineがnull値を持っていればそのままnullを、さもなければcombinerFnを適用
+    // Final result: if arrayTimeline has a null value, return null as is, otherwise apply combinerFn
     return (arrayTimeline as NullableTimeline<any[]>).nMap(
         valueArray => combinerFn(...(valueArray as any))
     );
 };
 
 // -----------------------------------------------------------------------------
-// 使用例とテスト
+// Usage Examples and Tests
 // -----------------------------------------------------------------------------
 
 const demonstrateUsage = (): void => {
-    // --- セットアップ ---
-    // テストで使用する基本的なタイムラインを準備します。
+    // --- Setup ---
+    // Prepare basic timelines for testing.
     console.log('=== Setting up initial timelines ===');
     const timeline1: Timeline<number> = Timeline(1);
     const timeline2: Timeline<number> = Timeline(2);
     const timeline3: Timeline<number> = Timeline(3);
     const timeline4: Timeline<number> = Timeline(4);
 
-    // --- foldベースのヘルパー関数のデモ (推奨される標準的な方法) ---
+    // --- Demo of fold-based helper functions (Recommended standard method) ---
     console.log('\n=== fold-based helpers (Recommended) Demo ===');
     const boolTimelines: readonly Timeline<boolean>[] = [Timeline(true), Timeline(false), Timeline(true)];
     const numberTimelines: readonly Timeline<number>[] = [10, 20, 30].map(Timeline);
 
-    // 各ヘルパー関数の初期値を確認します。
+    // Check the initial values of each helper function.
     console.log('anyOf([true, false, true]):', anyOf(boolTimelines).at(Now));       // true
     console.log('allOf([true, false, true]):', allOf(boolTimelines).at(Now));       // false
     console.log('sumOf([10, 20, 30]):', sumOf(numberTimelines).at(Now));       // 60
@@ -893,29 +893,29 @@ const demonstrateUsage = (): void => {
     console.log('averageOf([10, 20, 30]):', averageOf(numberTimelines).at(Now)); // 20
 
     /**
-     * --- listOf のデモ (複数タイムラインの結合) ---
-     * `listOf` は、複数のタイムラインを単一のタイムラインに結合し、
-     * その値を配列として提供します。
-     * 
-     * 注意: `listOf` は、配列の要素がすべて同じ型であることを前提としています。
+     * --- listOf Demo (Combining multiple timelines) ---
+     * `listOf` combines multiple timelines into a single timeline,
+     * providing its values as an array.
+     *
+     * Note: `listOf` assumes that all elements in the array are of the same type.
     */
     const listResult: Timeline<number[]> = listOf([timeline1, timeline2, timeline3]);
     console.log('listOf([t1, t2, t3]) initial:', listResult.at(Now)); // [1, 2, 3]
 
-    // --- combineLatest のデモ (特殊ケース・N項演算用) ---
+    // --- combineLatest Demo (for special cases / N-ary operations) ---
     console.log('\n=== combineLatest (for complex, non-foldable functions) Demo ===');
-    // `combineLatest` は、foldで表現できない複雑なN項関数で結合する場合に使います。
+    // `combineLatest` is used when combining with complex N-ary functions that cannot be expressed with fold.
     const sumTimeline: Timeline<number> = combineLatest(
         (a: number, b: number, c: number, d: number) => a + b + c + d
     )([timeline1, timeline2, timeline3, timeline4]);
 
-    // 初期値の合計: 1 + 2 + 3 + 4 = 10
+    // Initial sum: 1 + 2 + 3 + 4 = 10
     console.log('combineLatest sum (initial):', sumTimeline.at(Now));
 
-    // --- リアクティブな更新のテスト ---
+    // --- Reactivity Test ---
     console.log('\n=== Reactivity Test ===');
-    // timeline1の値を更新すると、それに依存する全てのタイムライン (`listResult`, `sumTimeline`)が
-    // 自動的に新しい値を反映することを確認します。
+    // When timeline1's value is updated, confirm that all timelines dependent on it
+    // (`listResult`, `sumTimeline`) automatically reflect the new value.
     console.log('Updating timeline1 from 1 to 10...');
     timeline1.define(Now, 10);
     console.log('... update complete.');
@@ -923,5 +923,5 @@ const demonstrateUsage = (): void => {
     console.log('combineLatest sum after update:', sumTimeline.at(Now)); // 10 + 2 + 3 + 4 = 19
 };
 
-// デモを実行したい場合は以下のコメントを外してください
+// Uncomment the following line to run the demo
 // demonstrateUsage();

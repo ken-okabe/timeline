@@ -8,65 +8,65 @@ export const createResource = (resource, cleanup) => ({
     cleanup
 });
 
-// --- 改良: 環境に依存しないデバッグモード判定 ---
+// --- Improvement: Environment-independent debug mode determination ---
 const debugMode = (() => {
-    // Node.js環境での判定
+    // Check in Node.js environment
     if (typeof process !== 'undefined' && process.env) {
         return process.env.NODE_ENV === 'development';
     }
 
-    // ブラウザ環境での判定（より厳密なチェック）
+    // Check in browser environment (more strict check)
     if (
         typeof window !== 'undefined' &&
         typeof window.location !== 'undefined' &&
         typeof URLSearchParams !== 'undefined'
     ) {
-        // 1. URLパラメータでの制御
+        // 1. Control via URL parameter
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('debug')) {
             return urlParams.get('debug') !== 'false';
         }
 
-        // 2. localStorageでの制御（永続化）
+        // 2. Control via localStorage (persistence)
         try {
             const debugFlag = localStorage.getItem('timeline-debug');
             if (debugFlag !== null) {
                 return debugFlag === 'true';
             }
         } catch (e) {
-            // localStorage が使えない環境では無視
+            // Ignore if localStorage is not available
         }
 
-        // 3. developmentビルドの検出（webpack等）
+        // 3. Detect development build (e.g., webpack)
         if (typeof __DEV__ !== 'undefined') {
             return __DEV__;
         }
 
-        // 4. 本番環境の検出（一般的なパターン）
+        // 4. Detect production environment (common patterns)
         if (window.location.hostname === 'localhost' ||
             window.location.hostname === '127.0.0.1' ||
             window.location.hostname.startsWith('192.168.') ||
             window.location.port !== '') {
-            return true; // 開発環境と推定
+            return true; // Estimated as development environment
         }
     }
 
-    // デフォルトは無効
+    // Default is disabled
     return false;
 })();
 
-// DependencyCore内で使用する際の判定関数
+// Judgment function for use within DependencyCore
 const isDebugEnabled = () => {
-    // 一時的な有効化をチェック
+    // Check for temporary enablement
     if (typeof window !== 'undefined' && window.__TIMELINE_DEBUG_TEMP__) {
         return true;
     }
     return debugMode;
 };
 
-// より柔軟な制御のためのユーティリティ関数
+// Utility functions for more flexible control
 export const DebugControl = {
-    // 動的にデバッグモードを有効/無効化
+    // Dynamically enable/disable debug mode
     enable: () => {
         if (typeof window !== 'undefined') {
             try {
@@ -89,10 +89,10 @@ export const DebugControl = {
         }
     },
 
-    // 現在の状態を確認
+    // Check current state
     isEnabled: () => isDebugEnabled(),
 
-    // セッション中の一時的な有効化（リロード不要）
+    // Temporarily enable during the session (no reload required)
     enableTemporary: () => {
         if (typeof window !== 'undefined') {
             window.__TIMELINE_DEBUG_TEMP__ = true;
@@ -102,7 +102,7 @@ export const DebugControl = {
 };
 
 // -----------------------------------------------------------------------------
-// DependencyCore: デバッグ支援強化版
+// DependencyCore: Enhanced Debugging Support Version
 // -----------------------------------------------------------------------------
 const DependencyCore = (() => {
     const dependencies = new Map();
@@ -525,7 +525,7 @@ export const DebugUtils = {
 };
 
 // =============================================================================
-// ===== 刷新された合成関数セクション (ここから) =====
+// ===== Refreshed Composition Functions Section (Start) =====
 // =============================================================================
 
 export const combineLatestWith = (f) => (timelineA) => (timelineB) => {
@@ -631,9 +631,9 @@ export const listOf = (timelines) => {
 };
 
 
-// --- Nullable版の応用関数 ---
+// --- Nullable version of advanced functions ---
 
-// Nullable版の二項演算子
+// Nullable version of binary operators
 const nOrOf = (timelineA, timelineB) =>
     nCombineLatestWith((a, b) => a || b)(timelineA)(timelineB);
 
@@ -646,7 +646,7 @@ const nAddOf = (timelineA, timelineB) =>
 const nConcatOf = (timelineA, timelineB) =>
     nCombineLatestWith((arrayA, valueB) => arrayA.concat(valueB))(timelineA)(timelineB);
 
-// Nullable版の高レベルヘルパー関数
+// Nullable version of high-level helper functions
 export const nAnyOf = (booleanTimelines) => {
     return foldTimelines(booleanTimelines, FalseTimeline, nOrOf);
 };
@@ -665,7 +665,7 @@ export const nListOf = (timelines) => {
 };
 
 
-// --- 特殊ケースのためのユーティリティ ---
+// --- Utilities for special cases ---
 export const combineLatest = (combinerFn) => (timelines) => {
     if (!Array.isArray(timelines) || timelines.length === 0) {
         return Timeline([]);
@@ -709,24 +709,24 @@ export const nCombineLatest = (combinerFn) => (timelines) => {
 
 
 // -----------------------------------------------------------------------------
-// 使用例とテスト
+// Usage Examples and Tests
 // -----------------------------------------------------------------------------
 
 const demonstrateUsage = () => {
-    // --- セットアップ ---
-    // テストで使用する基本的なタイムラインを準備します。
+    // --- Setup ---
+    // Prepare basic timelines for testing.
     console.log('=== Setting up initial timelines ===');
     const timeline1 = Timeline(1);
     const timeline2 = Timeline(2);
     const timeline3 = Timeline(3);
     const timeline4 = Timeline(4);
 
-    // --- foldベースのヘルパー関数のデモ (推奨される標準的な方法) ---
+    // --- Demo of fold-based helper functions (Recommended standard method) ---
     console.log('\n=== fold-based helpers (Recommended) Demo ===');
     const boolTimelines = [Timeline(true), Timeline(false), Timeline(true)];
     const numberTimelines = [10, 20, 30].map(Timeline);
 
-    // 各ヘルパー関数の初期値を確認します。
+    // Check the initial values of each helper function.
     console.log('anyOf([true, false, true]):', anyOf(boolTimelines).at(Now));       // true
     console.log('allOf([true, false, true]):', allOf(boolTimelines).at(Now));       // false
     console.log('sumOf([10, 20, 30]):', sumOf(numberTimelines).at(Now));       // 60
@@ -735,29 +735,29 @@ const demonstrateUsage = () => {
     console.log('averageOf([10, 20, 30]):', averageOf(numberTimelines).at(Now)); // 20
 
     /**
-     * --- listOf のデモ (複数タイムラインの結合) ---
-     * `listOf` は、複数のタイムラインを単一のタイムラインに結合し、
-     * その値を配列として提供します。
-     * 
-     * 注意: `listOf` は、配列の要素がすべて同じ型であることを前提としています。
+     * --- listOf Demo (Combining multiple timelines) ---
+     * `listOf` combines multiple timelines into a single timeline,
+     * providing its values as an array.
+     *
+     * Note: `listOf` assumes that all elements in the array are of the same type.
     */
     const listResult = listOf([timeline1, timeline2, timeline3]);
     console.log('listOf([t1, t2, t3]) initial:', listResult.at(Now)); // [1, 2, 3]
 
-    // --- combineLatest のデモ (特殊ケース・N項演算用) ---
+    // --- combineLatest Demo (for special cases / N-ary operations) ---
     console.log('\n=== combineLatest (for complex, non-foldable functions) Demo ===');
-    // `combineLatest` は、foldで表現できない複雑なN項関数で結合する場合に使います。
+    // `combineLatest` is used when combining with complex N-ary functions that cannot be expressed with fold.
     const sumTimeline = combineLatest(
         (a, b, c, d) => a + b + c + d
     )([timeline1, timeline2, timeline3, timeline4]);
 
-    // 初期値の合計: 1 + 2 + 3 + 4 = 10
+    // Initial sum: 1 + 2 + 3 + 4 = 10
     console.log('combineLatest sum (initial):', sumTimeline.at(Now));
 
-    // --- リアクティブな更新のテスト ---
+    // --- Reactivity Test ---
     console.log('\n=== Reactivity Test ===');
-    // timeline1の値を更新すると、それに依存する全てのタイムライン (`listResult`, `sumTimeline`)が
-    // 自動的に新しい値を反映することを確認します。
+    // When timeline1's value is updated, confirm that all timelines dependent on it
+    // (`listResult`, `sumTimeline`) automatically reflect the new value.
     console.log('Updating timeline1 from 1 to 10...');
     timeline1.define(Now, 10);
     console.log('... update complete.');
@@ -765,6 +765,5 @@ const demonstrateUsage = () => {
     console.log('combineLatest sum after update:', sumTimeline.at(Now)); // 10 + 2 + 3 + 4 = 19
 };
 
-// デモを実行したい場合は以下のコメントを外してください
+// Uncomment the following line to run the demo
 // demonstrateUsage();
-
