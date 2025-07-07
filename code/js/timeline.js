@@ -1,7 +1,3 @@
-// Symbol for internal id property
-const _id = Symbol('id');
-// --- Symbol for the last value
-const _last = Symbol('last');
 
 export const createResource = (resource, cleanup) => ({
     resource,

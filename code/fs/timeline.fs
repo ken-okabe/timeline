@@ -1,9 +1,5 @@
 module Timeline
 
-// --- Now Type Definition ---
-type NowType = NOW of string
-let Now = NOW "Conceptual time coordinate"
-
 // --- Core System Abstractions ---
 type TimelineId = System.Guid
 type DependencyId = System.Guid
@@ -226,6 +222,10 @@ module internal DependencyCore =
             let deps = dependencyDebugInfo.Values |> Seq.toList
             (scopes, deps), (scopeDebugInfo.Count, dependencyDebugInfo.Count)
 
+// --- Now Type Definition ---
+type NowType = NOW of string
+let Now = NOW "Conceptual time coordinate"
+
 // --- Timeline Type Definition ---
 type Timeline<'a> =
     private
@@ -239,306 +239,336 @@ let Timeline<'a> (initialValue: 'a) : Timeline<'a> =
 
 // --- Enhanced Timeline Operations Module ---
 module TL =
-    let isNull (value: 'a) : bool =
-        match box value with
-        | null -> true
-        | _ -> false
+    let isNull<'a when 'a : null> =
+        fun (value: 'a) ->
+            match (value :> obj) with
+            | null -> true
+            | _ -> false
 
-    let at<'a> ( _now: NowType) (timeline: Timeline<'a>) : 'a =
-        timeline._last
+    let at<'a> =
+        fun (_now: NowType) ->
+        fun (timeline: Timeline<'a>) ->
+            timeline._last
 
-    let define<'a> (_now: NowType) (value: 'a) (timeline: Timeline<'a>) : unit =
-        timeline._last <- value
-        let callbacks = timeline._id |> DependencyCore.getCallbacks
-        callbacks
-        |> List.iter (fun (depId, callbackObj) ->
-            try
-                if callbackObj = null then
-                    handleCallbackError depId General (System.Exception("Null callback")) None
+    let define<'a> =
+        fun (_now: NowType) ->
+        fun (value: 'a) ->
+        fun (timeline: Timeline<'a>) ->
+            timeline._last <- value
+            let callbacks = timeline._id |> DependencyCore.getCallbacks
+            callbacks
+            |> List.iter (fun (depId, callbackObj) ->
+                try
+                    if callbackObj = null then
+                        handleCallbackError depId General (System.Exception("Null callback")) None
+                    else
+                        try
+                            let callback = callbackObj :?> ('a -> unit)
+                            callback value
+                        with
+                        | :? System.InvalidCastException as ex ->
+                            handleCallbackError depId CallbackExecution ex (Some (box value))
+                        | ex ->
+                            handleCallbackError depId CallbackExecution ex (Some (box value))
+                with
+                | ex ->
+                    handleCallbackError depId General ex (Some (box value))
+            )
+
+    let map<'a, 'b> =
+        fun (f: 'a -> 'b) ->
+        fun (timelineA: Timeline<'a>) ->
+            let initialB =
+                try
+                    f (timelineA |> at Now)
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty MapFunction ex (Some (box (timelineA |> at Now)))
+                    reraise()
+
+            let timelineB = Timeline initialB
+            let reactionFn : 'a -> unit =
+                fun valueA ->
+                    try
+                        let newValueB = f valueA
+                        timelineB |> define Now newValueB
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty MapFunction ex (Some (box valueA))
+
+            DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None None |> ignore
+            timelineB
+
+    let nMap<'a, 'b when 'a : null and 'b : null> =
+        fun (f: 'a -> 'b) ->
+        fun (timelineA: Timeline<'a>) ->
+            let currentValueA = timelineA |> at Now
+            let initialB =
+                if isNull currentValueA then
+                    null
                 else
                     try
-                        let callback = callbackObj :?> ('a -> unit)
-                        callback value
-                    with
-                    | :? System.InvalidCastException as ex ->
-                        handleCallbackError depId CallbackExecution ex (Some (box value))
-                    | ex ->
-                        handleCallbackError depId CallbackExecution ex (Some (box value))
-            with
-            | ex ->
-                handleCallbackError depId General ex (Some (box value))
-        )
+                        f currentValueA
+                    with ex ->
+                        handleCallbackError System.Guid.Empty MapFunction ex (Some (box currentValueA))
+                        null
 
-    let map<'a, 'b> (f: 'a -> 'b) (timelineA: Timeline<'a>) : Timeline<'b> =
-        let initialB =
-            try
-                f (timelineA |> at Now)
-            with
-            | ex ->
-                handleCallbackError System.Guid.Empty MapFunction ex (Some (box (timelineA |> at Now)))
-                reraise()
-
-        let timelineB = Timeline initialB
-        let reactionFn : 'a -> unit =
-            fun valueA ->
-                try
-                    let newValueB = f valueA
-                    timelineB |> define Now newValueB
-                with
-                | ex ->
-                    handleCallbackError System.Guid.Empty MapFunction ex (Some (box valueA))
-
-        DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None None |> ignore
-        timelineB
-
-    let nMap<'a, 'b> (f: 'a -> 'b) (timelineA: Timeline<'a>) : Timeline<'b> =
-        let currentValueA = timelineA |> at Now
-        let initialB =
-            if isNull currentValueA then
-                Unchecked.defaultof<'b>
-            else
-                try
-                    f currentValueA
-                with
-                | ex ->
-                    handleCallbackError System.Guid.Empty MapFunction ex (Some (box currentValueA))
-                    Unchecked.defaultof<'b>
-
-        let timelineB = Timeline initialB
-        let reactionFn : 'a -> unit =
-            fun valueA ->
-                try
+            let timelineB = Timeline initialB
+            let reactionFn : 'a -> unit =
+                fun valueA ->
                     let newValueB =
                         if isNull valueA then
-                            Unchecked.defaultof<'b>
+                            null
                         else
-                            f valueA
+                            try
+                                f valueA
+                            with ex ->
+                                handleCallbackError System.Guid.Empty MapFunction ex (Some (box valueA))
+                                null
                     timelineB |> define Now newValueB
-                with
-                | ex ->
-                    handleCallbackError System.Guid.Empty MapFunction ex (Some (box valueA))
-                    timelineB |> define Now Unchecked.defaultof<'b>
 
-        DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None None |> ignore
-        timelineB
+            DependencyCore.registerDependency timelineA._id timelineB._id (reactionFn :> obj) None None |> ignore
+            timelineB
 
-    let bind<'a, 'b> (monadf: 'a -> Timeline<'b>) (timelineA: Timeline<'a>) : Timeline<'b> =
-        let initialInnerTimeline = monadf (timelineA |> at Now)
-        let timelineB = Timeline (initialInnerTimeline |> at Now)
-        let mutable currentScopeId : ScopeId = DependencyCore.createScope (Some timelineA._id)
+    let bind<'a, 'b> =
+        fun (monadf: 'a -> Timeline<'b>) ->
+        fun (timelineA: Timeline<'a>) ->
+            let initialInnerTimeline = monadf (timelineA |> at Now)
+            let timelineB = Timeline (initialInnerTimeline |> at Now)
+            let mutable currentScopeId : ScopeId = DependencyCore.createScope (Some timelineA._id)
 
-        let setUpInnerReaction (innerTimeline: Timeline<'b>) (scopeForInner: ScopeId) : unit =
-            let reactionFnInnerToB : 'b -> unit =
-                fun valueInner ->
-                    if currentScopeId = scopeForInner then
-                        timelineB |> define Now valueInner
+            let setUpInnerReaction (innerTimeline: Timeline<'b>) (scopeForInner: ScopeId) : unit =
+                let reactionFnInnerToB : 'b -> unit =
+                    fun valueInner ->
+                        if currentScopeId = scopeForInner then
+                            timelineB |> define Now valueInner
 
-            DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) None |> ignore
+                DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) None |> ignore
 
-        setUpInnerReaction initialInnerTimeline currentScopeId
+            setUpInnerReaction initialInnerTimeline currentScopeId
+            let reactionFnAtoB : 'a -> unit =
+                fun valueA ->
+                    try
+                        DependencyCore.disposeScope currentScopeId
+                        currentScopeId <- DependencyCore.createScope (Some timelineA._id)
+                        let newInnerTimeline = monadf valueA
+                        timelineB |> define Now (newInnerTimeline |> at Now)
+                        setUpInnerReaction newInnerTimeline currentScopeId
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty BindTransition ex (Some (box valueA))
 
-        let reactionFnAtoB : 'a -> unit =
-            fun valueA ->
-                try
-                    DependencyCore.disposeScope currentScopeId
-                    currentScopeId <- DependencyCore.createScope (Some timelineA._id)
-                    let newInnerTimeline = monadf valueA
-                    timelineB |> define Now (newInnerTimeline |> at Now)
-                    setUpInnerReaction newInnerTimeline currentScopeId
-                with
-                | ex ->
-                    handleCallbackError System.Guid.Empty BindTransition ex (Some (box valueA))
+            DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None None |> ignore
+            timelineB
 
-        DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None None |> ignore
-        timelineB
-
-    let nBind<'a, 'b> (monadf: 'a -> Timeline<'b>) (timelineA: Timeline<'a>) : Timeline<'b> =
-        let initialValueA = timelineA |> at Now
-        let initialInnerTimeline =
-            if isNull initialValueA then
-                Timeline Unchecked.defaultof<'b>
-            else
-                try
-                    monadf initialValueA
-                with
-                | ex ->
-                    handleCallbackError System.Guid.Empty BindTransition ex (Some (box initialValueA))
-                    Timeline Unchecked.defaultof<'b>
-
-        let timelineB = Timeline (initialInnerTimeline |> at Now)
-        let mutable currentScopeId : ScopeId = DependencyCore.createScope (Some timelineA._id)
-
-        let setUpInnerReaction (innerTimeline: Timeline<'b>) (scopeForInner: ScopeId) : unit =
-            let reactionFnInnerToB : 'b -> unit =
-                fun valueInner ->
-                    if currentScopeId = scopeForInner then
-                        timelineB |> define Now valueInner
-
-            DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) None |> ignore
-
-        setUpInnerReaction initialInnerTimeline currentScopeId
-
-        let reactionFnAtoB : 'a -> unit =
-            fun valueA ->
-                try
-                    DependencyCore.disposeScope currentScopeId
-                    currentScopeId <- DependencyCore.createScope (Some timelineA._id)
-                    let newInnerTimeline =
-                        if isNull valueA then
-                            Timeline Unchecked.defaultof<'b>
-                        else
-                            monadf valueA
-                    timelineB |> define Now (newInnerTimeline |> at Now)
-                    setUpInnerReaction newInnerTimeline currentScopeId
-                with
-                | ex ->
-                    handleCallbackError System.Guid.Empty BindTransition ex (Some (box valueA))
-                    let fallbackTimeline = Timeline Unchecked.defaultof<'b>
-                    timelineB |> define Now Unchecked.defaultof<'b>
-                    setUpInnerReaction fallbackTimeline currentScopeId
-
-        DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None None |> ignore
-        timelineB
-
-    let link<'a> (targetTimeline: Timeline<'a>) (sourceTimeline: Timeline<'a>) : unit =
-        let reactionFn value = targetTimeline |> define Now value
-        DependencyCore.registerDependency sourceTimeline._id targetTimeline._id (reactionFn :> obj) None None |> ignore
-        reactionFn (sourceTimeline |> at Now)
-
-    let scan<'state, 'input> (accumulator: 'state -> 'input -> 'state) (initialState: 'state) (sourceTimeline: Timeline<'input>) : Timeline<'state> =
-        let stateTimeline = Timeline initialState
-        let reactionFn input =
-            try
-                let currentState = stateTimeline |> at Now
-                let newState = accumulator currentState input
-                stateTimeline |> define Now newState
-            with
-            | ex ->
-                handleCallbackError System.Guid.Empty ScanAccumulator ex (Some (box input))
-
-        DependencyCore.registerDependency sourceTimeline._id stateTimeline._id (reactionFn :> obj) None None |> ignore
-        reactionFn (sourceTimeline |> at Now)
-        stateTimeline
-
-    let distinctUntilChanged<'a when 'a : equality> (sourceTimeline: Timeline<'a>) : Timeline<'a> =
-        let resultTimeline = Timeline (sourceTimeline |> at Now)
-        let mutable lastValue = sourceTimeline |> at Now
-        let reactionFn currentValue =
-            if currentValue <> lastValue then
-                lastValue <- currentValue
-                resultTimeline |> define Now currentValue
-
-        DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (reactionFn :> obj) None None |> ignore
-        resultTimeline
-
-    let using<'a, 'b when 'b: null> (resourceFactory: ResourceFactory<'a, 'b>) (sourceTimeline: Timeline<'a>) : Timeline<'b> =
-        let resultTimeline = Timeline (Unchecked.defaultof<'b>)
-        let mutable currentScopeIdOpt: ScopeId option = None
-
-        let reactionFn (value: 'a) : unit =
-            try
-                currentScopeIdOpt |> Option.iter DependencyCore.disposeScope
-                let newScopeId = DependencyCore.createScope (Some sourceTimeline._id)
-                currentScopeIdOpt <- Some newScopeId
-                let resourceData = resourceFactory value
-
-                if not (isNull resourceData) then
-                    resultTimeline |> define Now resourceData.Resource
-                    DependencyCore.registerDependency
-                        sourceTimeline._id
-                        resultTimeline._id
-                        (fun (_:obj) -> () :> obj)
-                        (Some newScopeId)
-                        (Some resourceData.Cleanup)
-                    |> ignore
+    let nBind<'a, 'b when 'a : null and 'b : null> =
+        fun (monadf: 'a -> Timeline<'b>) ->
+        fun (timelineA: Timeline<'a>) ->
+            let initialValueA = timelineA |> at Now
+            let initialInnerTimeline =
+                if isNull initialValueA then
+                    Timeline null
                 else
+                    try
+                        monadf initialValueA
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty BindTransition ex (Some (box initialValueA))
+                        Timeline null
+
+            let timelineB = Timeline (initialInnerTimeline |> at Now)
+            let mutable currentScopeId : ScopeId = DependencyCore.createScope (Some timelineA._id)
+            let setUpInnerReaction (innerTimeline: Timeline<'b>) (scopeForInner: ScopeId) : unit =
+                let reactionFnInnerToB : 'b -> unit =
+                    fun valueInner ->
+                        if currentScopeId = scopeForInner then
+                            timelineB |> define Now valueInner
+
+                DependencyCore.registerDependency innerTimeline._id timelineB._id (reactionFnInnerToB :> obj) (Some scopeForInner) None |> ignore
+
+            setUpInnerReaction initialInnerTimeline currentScopeId
+            let reactionFnAtoB : 'a -> unit =
+                fun valueA ->
+                    try
+                        DependencyCore.disposeScope currentScopeId
+                        currentScopeId <- DependencyCore.createScope (Some timelineA._id)
+                        let newInnerTimeline =
+                            if isNull valueA then
+                                Timeline null
+                            else
+                                 monadf valueA
+                        timelineB |> define Now (newInnerTimeline |> at Now)
+                        setUpInnerReaction newInnerTimeline currentScopeId
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty BindTransition ex (Some (box valueA))
+                        let fallbackTimeline = Timeline null
+                        timelineB |> define Now null
+                        setUpInnerReaction fallbackTimeline currentScopeId
+
+            DependencyCore.registerDependency timelineA._id timelineB._id (reactionFnAtoB :> obj) None None |> ignore
+            timelineB
+
+    let link<'a> =
+        fun (targetTimeline: Timeline<'a>) ->
+        fun (sourceTimeline: Timeline<'a>) ->
+            let reactionFn = fun value -> targetTimeline |> define Now value
+            DependencyCore.registerDependency sourceTimeline._id targetTimeline._id (reactionFn :> obj) None None |> ignore
+            reactionFn (sourceTimeline |> at Now)
+
+    let scan<'state, 'input> =
+        fun (accumulator: 'state -> 'input -> 'state) ->
+        fun (initialState: 'state) ->
+        fun (sourceTimeline: Timeline<'input>) ->
+            let stateTimeline = Timeline initialState
+            let reactionFn = fun input ->
+                try
+                    let currentState = stateTimeline |> at Now
+                    let newState = accumulator currentState input
+                    stateTimeline |> define Now newState
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty ScanAccumulator ex (Some (box input))
+
+            DependencyCore.registerDependency sourceTimeline._id stateTimeline._id (reactionFn :> obj) None None |> ignore
+            reactionFn (sourceTimeline |> at Now)
+            stateTimeline
+
+    let distinctUntilChanged<'a when 'a : equality> =
+        fun (sourceTimeline: Timeline<'a>) ->
+            let resultTimeline = Timeline (sourceTimeline |> at Now)
+            let mutable lastValue = sourceTimeline |> at Now
+            let reactionFn = fun currentValue ->
+                if currentValue <> lastValue then
+                    lastValue <- currentValue
+                    resultTimeline |> define Now currentValue
+
+            DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (reactionFn :> obj) None None |> ignore
+            resultTimeline
+
+    let using<'a, 'b when 'b: null> =
+        fun (resourceFactory: ResourceFactory<'a, 'b>) ->
+        fun (sourceTimeline: Timeline<'a>) ->
+            let resultTimeline = Timeline (Unchecked.defaultof<'b>)
+            let mutable currentScopeIdOpt: ScopeId option = None
+            let reactionFn = fun (value: 'a) ->
+                try
+                    currentScopeIdOpt |> Option.iter DependencyCore.disposeScope
+                    let newScopeId = DependencyCore.createScope (Some sourceTimeline._id)
+                    currentScopeIdOpt <- Some newScopeId
+                    let resourceData = resourceFactory value
+
+                    if (resourceData :> obj) = null then
+                        resultTimeline |> define Now (Unchecked.defaultof<'b>)
+                    else
+                        resultTimeline |> define Now resourceData.Resource
+                        DependencyCore.registerDependency
+                            sourceTimeline._id
+                            resultTimeline._id
+                            (fun (_:obj) -> () :> obj) // No-op callback
+                            (Some newScopeId)
+                            (Some resourceData.Cleanup)
+                        |> ignore
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty UsingFunction ex (Some (box value))
                     resultTimeline |> define Now (Unchecked.defaultof<'b>)
-            with
-            | ex ->
-                handleCallbackError System.Guid.Empty UsingFunction ex (Some (box value))
-                resultTimeline |> define Now (Unchecked.defaultof<'b>)
 
-        let mainReactionFn (v: 'a) = reactionFn v
-        DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (mainReactionFn :> obj) None None |> ignore
-        reactionFn (sourceTimeline |> at Now)
-        resultTimeline
+            let mainReactionFn = fun (v: 'a) -> reactionFn v
+            DependencyCore.registerDependency sourceTimeline._id resultTimeline._id (mainReactionFn :> obj) None None |> ignore
+            reactionFn (sourceTimeline |> at Now)
+            resultTimeline
 
-    // ############ 変更範囲 START ############
+    let nUsing<'a, 'b when 'a : null and 'b : null> =
+        fun (resourceFactory: 'a -> Resource<'b>) ->
+        fun (sourceTimeline: Timeline<'a>) ->
+            let wrappedFactory (value: 'a) : Resource<'b> =
+                if isNull value then
+                    // Use Unchecked.defaultof to generate a null reference instead of a literal 'null'
+                    Unchecked.defaultof<Resource<'b>>
+                else
+                    try
+                        resourceFactory value
+                    with ex ->
+                        handleCallbackError System.Guid.Empty UsingFunction ex (Some (box value))
+                        // Corrected here as well for consistency
+                        Unchecked.defaultof<Resource<'b>>
+            using wrappedFactory sourceTimeline
 
-    let nUsing<'a, 'b when 'b: null> (resourceFactory: 'a -> Resource<'b>) (sourceTimeline: Timeline<'a>) : Timeline<'b> =
-        let wrappedFactory (value: 'a) : Resource<'b> =
-            if isNull value then
-                Unchecked.defaultof<Resource<'b>> // 修正: 'b 型ではなく Resource<'b> 型のデフォルト値を返す
-            else
-                resourceFactory value
-        using wrappedFactory sourceTimeline
+    let combineLatestWith<'a, 'b, 'c> =
+        fun (f: 'a -> 'b -> 'c) ->
+        fun (timelineA: Timeline<'a>) ->
+        fun (timelineB: Timeline<'b>) ->
+            let initialA = timelineA |> at Now
+            let initialB = timelineB |> at Now
+            let initialResult =
+                try
+                    f initialA initialB
+                with
+                | ex ->
+                    handleCallbackError System.Guid.Empty CombineInitial ex (Some (box (initialA, initialB)))
+                    reraise()
 
-    let combineLatestWith<'a, 'b, 'c> (f: 'a -> 'b -> 'c) (timelineA: Timeline<'a>) (timelineB: Timeline<'b>) : Timeline<'c> =
-        let initialA = timelineA |> at Now
-        let initialB = timelineB |> at Now
-        let initialResult =
-            try
-                f initialA initialB
-            with
-            | ex ->
-                handleCallbackError System.Guid.Empty CombineInitial ex (Some (box (initialA, initialB)))
-                reraise()
+            let resultTimeline = Timeline initialResult
+            let mutable latestA = initialA
+            let mutable latestB = initialB
+            let reactionA = fun newA ->
+                latestA <- newA
+                try
+                    resultTimeline |> define Now (f latestA latestB)
+                with ex -> handleCallbackError System.Guid.Empty CombineReactionA ex (Some (box newA))
+            let reactionB = fun newB ->
+                latestB <- newB
+                try
+                    resultTimeline |> define Now (f latestA latestB)
+                with ex -> handleCallbackError System.Guid.Empty CombineReactionB ex (Some (box newB))
+            DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None None |> ignore
+            DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None None |> ignore
+            resultTimeline
 
-        let resultTimeline = Timeline initialResult
-        let mutable latestA = initialA
-        let mutable latestB = initialB
+    let nCombineLatestWith<'a, 'b, 'c when 'a: null and 'b: null and 'c: null> =
+        fun (f: 'a -> 'b -> 'c) ->
+        fun (timelineA: Timeline<'a>) ->
+        fun (timelineB: Timeline<'b>) ->
+            let initialA = timelineA |> at Now
+            let initialB = timelineB |> at Now
+            let initialResult =
+                if isNull initialA || isNull initialB then
+                    null
+                else
+                    try
+                        f initialA initialB
+                    with
+                    | ex ->
+                        handleCallbackError System.Guid.Empty CombineInitial ex (Some (box (initialA, initialB)))
+                        null
 
-        let reactionA newA =
-            latestA <- newA
-            try
-                resultTimeline |> define Now (f latestA latestB)
-            with ex -> handleCallbackError System.Guid.Empty CombineReactionA ex (Some (box newA))
+            let resultTimeline = Timeline initialResult
+            let mutable latestA = initialA
+            let mutable latestB = initialB
+            let reactionA = fun newA ->
+                latestA <- newA
+                let newResult =
+                    if isNull newA || isNull latestB then
+                        null
+                    else
+                        try f newA latestB with ex -> handleCallbackError System.Guid.Empty CombineReactionA ex (Some (box newA)); null
+                resultTimeline |> define Now newResult
+            let reactionB = fun newB ->
+                latestB <- newB
+                let newResult =
+                    if isNull latestA || isNull newB then
+                        null
+                    else
+                        try f latestA newB with ex -> handleCallbackError System.Guid.Empty CombineReactionB ex (Some (box newB)); null
+                resultTimeline |> define Now newResult
+            DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None None |> ignore
+            DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None None |> ignore
+            resultTimeline
 
-        let reactionB newB =
-            latestB <- newB
-            try
-                resultTimeline |> define Now (f latestA latestB)
-            with ex -> handleCallbackError System.Guid.Empty CombineReactionB ex (Some (box newB))
-
-        DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None None |> ignore
-        DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None None |> ignore
-
-        resultTimeline
-
-    let nCombineLatestWith<'a, 'b, 'c> (f: 'a -> 'b -> 'c) (timelineA: Timeline<'a>) (timelineB: Timeline<'b>) : Timeline<'c> =
-        let initialA = timelineA |> at Now
-        let initialB = timelineB |> at Now
-        let initialResult =
-            try
-                f initialA initialB
-            with
-            | ex ->
-                handleCallbackError System.Guid.Empty CombineInitial ex (Some (box (initialA, initialB)))
-                Unchecked.defaultof<'c>
-
-        let resultTimeline = Timeline initialResult
-        let mutable latestA = initialA
-        let mutable latestB = initialB
-
-        let reactionA newA =
-            latestA <- newA
-            let newResult =
-                try f newA latestB with ex -> handleCallbackError System.Guid.Empty CombineReactionA ex (Some (box newA)); Unchecked.defaultof<'c>
-            resultTimeline |> define Now newResult
-
-        let reactionB newB =
-            latestB <- newB
-            let newResult =
-                try f latestA newB with ex -> handleCallbackError System.Guid.Empty CombineReactionB ex (Some (box newB)); Unchecked.defaultof<'c>
-            resultTimeline |> define Now newResult
-
-        DependencyCore.registerDependency timelineA._id resultTimeline._id (reactionA :> obj) None None |> ignore
-        DependencyCore.registerDependency timelineB._id resultTimeline._id (reactionB :> obj) None None |> ignore
-
-        resultTimeline
-
-    let ID<'a> (a: 'a) : Timeline<'a> =
-        Timeline a
+    let ID<'a> =
+        fun (a: 'a) ->
+            Timeline a
 
     let inline (>>>) (f: 'a -> Timeline<'b>) (g: 'b -> Timeline<'c>) : ('a -> Timeline<'c>) =
         fun a ->
@@ -548,111 +578,56 @@ module TL =
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
 
-    let Or (timelineA: Timeline<bool>) (timelineB: Timeline<bool>) : Timeline<bool> =
-        combineLatestWith (||) timelineA timelineB
+    let Or =
+        fun (timelineA: Timeline<bool>) ->
+        fun (timelineB: Timeline<bool>) ->
+            combineLatestWith (||) timelineA timelineB
 
-    let And (timelineA: Timeline<bool>) (timelineB: Timeline<bool>) : Timeline<bool> =
-        combineLatestWith (&&) timelineA timelineB
+    let And =
+        fun (timelineA: Timeline<bool>) ->
+        fun (timelineB: Timeline<bool>) ->
+            combineLatestWith (&&) timelineA timelineB
 
-    let any (booleanTimelines: list<Timeline<bool>>) : Timeline<bool> =
-        List.fold Or FalseTimeline booleanTimelines
+    let any =
+        fun (booleanTimelines: list<Timeline<bool>>) ->
+            List.fold Or FalseTimeline booleanTimelines
 
-    let all (booleanTimelines: list<Timeline<bool>>) : Timeline<bool> =
-        List.fold And TrueTimeline booleanTimelines
+    let all =
+        fun (booleanTimelines: list<Timeline<bool>>) ->
+            List.fold And TrueTimeline booleanTimelines
 
     // --- Composition Functions Section ---
 
     // --- N-ary Operations ---
-    // 修正: 型シグネチャをより正確に
-    let combineLatest<'a, 'r> (combiner: list<'a> -> 'r) (timelines: list<Timeline<'a>>) : Timeline<'r> =
-        if List.isEmpty timelines then
-            Timeline (combiner [])
-        else
-            let arrayTimeline =
-                timelines
-                |> List.map (map (fun v -> [v]))
-                |> List.reduce (combineLatestWith (fun listA listB -> List.append listA listB))
-
-            arrayTimeline |> map combiner
+    let combineLatest<'a, 'r> =
+        fun (combiner: list<'a> -> 'r) ->
+        fun (timelines: list<Timeline<'a>>) ->
+            if List.isEmpty timelines then
+                Timeline (combiner [])
+            else
+                let arrayTimeline =
+                    timelines
+                    |> List.map (map (fun v -> [v]))
+                    |> List.reduce (combineLatestWith (fun listA listB -> List.append listA listB))
+                arrayTimeline |> map combiner
 
     // --- Level 3: Generic folding ---
-    let foldTimelines<'a, 'b> (accumulator: Timeline<'b> -> Timeline<'a> -> Timeline<'b>) (initialState: Timeline<'b>) (timelines: list<Timeline<'a>>) : Timeline<'b> =
-        List.fold accumulator initialState timelines
-
-    // --- Level 2 & 4: High-level helper functions ---
-    let sumOf (numberTimelines: list<Timeline<float>>) : Timeline<float> =
-        let addOf (t1: Timeline<float>) (t2: Timeline<float>) = combineLatestWith (+) t1 t2
-        foldTimelines addOf (Timeline 0.0) numberTimelines
-
-    let maxOf (numberTimelines: list<Timeline<float>>) : Timeline<float> =
-        let maxOf2 (t1: Timeline<float>) (t2: Timeline<float>) = combineLatestWith max t1 t2
-        foldTimelines maxOf2 (Timeline System.Double.NegativeInfinity) numberTimelines
-
-    let minOf (numberTimelines: list<Timeline<float>>) : Timeline<float> =
-        let minOf2 (t1: Timeline<float>) (t2: Timeline<float>) = combineLatestWith min t1 t2
-        foldTimelines minOf2 (Timeline System.Double.PositiveInfinity) numberTimelines
-
-    let averageOf (numberTimelines: list<Timeline<float>>) : Timeline<float> =
-        if List.isEmpty numberTimelines then
-            Timeline 0.0
-        else
-            sumOf numberTimelines
-            |> map (fun sum -> sum / (float numberTimelines.Length))
-
-    let listOf<'a> (timelines: list<Timeline<'a>>) : Timeline<list<'a>> =
-        let concatOf (acc: Timeline<list<'a>>) (curr: Timeline<'a>) =
-            combineLatestWith (fun list item -> List.append list [item]) acc curr
-        foldTimelines concatOf (Timeline []) timelines
+    let foldTimelines<'a, 'b> =
+        fun (accumulator: Timeline<'b> -> Timeline<'a> -> Timeline<'b>) ->
+        fun (initialState: Timeline<'b>) ->
+        fun (timelines: list<Timeline<'a>>) ->
+            List.fold accumulator initialState timelines
 
     // --- Nullable version of applied functions ---
-    // 修正: このセクション全体を、box化/unbox化を避け、型安全な方法に書き換え
+    // Note: These functions operate on System.Nullable<'T> which is a value type,
+    // so `isNull` is not applicable. Instead, we check `.HasValue`.
 
-    let nSumOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
-        let nAddOf (acc: Timeline<System.Nullable<float>>) (curr: Timeline<System.Nullable<float>>) =
-            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) -> if a.HasValue && b.HasValue then System.Nullable(a.Value + b.Value) else System.Nullable()) acc curr
-        foldTimelines nAddOf (Timeline(System.Nullable 0.0)) numberTimelines
-
-    let nMaxOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
-        let nMaxOf2 (acc: Timeline<System.Nullable<float>>) (curr: Timeline<System.Nullable<float>>) =
-            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) ->
-                if a.HasValue && b.HasValue then System.Nullable(max a.Value b.Value)
-                else if a.HasValue then a
-                else b) acc curr
-        foldTimelines nMaxOf2 (Timeline(System.Nullable System.Double.NegativeInfinity)) numberTimelines
-
-    let nMinOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
-        let nMinOf2 (acc: Timeline<System.Nullable<float>>) (curr: Timeline<System.Nullable<float>>) =
-            nCombineLatestWith (fun (a: System.Nullable<float>) (b: System.Nullable<float>) ->
-                if a.HasValue && b.HasValue then System.Nullable(min a.Value b.Value)
-                else if a.HasValue then a
-                else b) acc curr
-        foldTimelines nMinOf2 (Timeline(System.Nullable System.Double.PositiveInfinity)) numberTimelines
-
-    let nAverageOf (numberTimelines: list<Timeline<System.Nullable<float>>>) : Timeline<System.Nullable<float>> =
-        if List.isEmpty numberTimelines then
-            Timeline(System.Nullable()) // null を返す
-        else
-            let sumTimeline = nSumOf numberTimelines
-            sumTimeline |> nMap (fun sum ->
-                if sum.HasValue then System.Nullable(sum.Value / (float numberTimelines.Length))
-                else System.Nullable()
-            )
-    // `nListOf` のためのアキュムレータ関数
-    let private nConcatOf<'a when 'a : null> (accTimeline: Timeline<ResizeArray<'a>>) (currTimeline: Timeline<'a>) : Timeline<ResizeArray<'a>> =
-        nCombineLatestWith (fun (arr: ResizeArray<'a>) (item: 'a) ->
-            let newArr = ResizeArray(arr) // 不変性を保つため防衛的コピー
-            newArr.Add(item)
-            newArr
-        ) accTimeline currTimeline
-
-    // `null` を扱える `ResizeArray<'a>` を返すように変更
-    let nListOf<'a when 'a : null> (timelines: list<Timeline<'a>>) : Timeline<ResizeArray<'a>> =
-        // 初期状態: `null` ではない空の ResizeArray
-        let initialTimeline = Timeline(ResizeArray<'a>())
-        // fold を使って畳み込み
-        foldTimelines nConcatOf initialTimeline timelines
-
-    // ############ 変更範囲 END ############
+    let nListOf<'a when 'a : null> =
+        fun (timelines: list<Timeline<'a>>) ->
+            // `combineLatest` is suitable here as it gathers all values into a list.
+            // If we treat `Timeline<null>` as a valid input, the output should be `Timeline<list<...>>`
+            // where some elements can be null.
+            combineLatest (fun items -> items) timelines
 
 // --- Public Debug Modules ---
 module DebugControl =
@@ -663,7 +638,6 @@ module DebugControl =
     let disable () =
         persistentDebugEnabled <- Some false
         printfn "Timeline persistent debug mode disabled."
-
 
     let enableTemporary () =
         temporaryDebugEnabled <- true
@@ -689,7 +663,6 @@ module Debug =
             printfn "Total Scopes: %d" info.TotalScopes
             printfn "Total Dependencies: %d" info.TotalDependencies
             printfn "--------------------------------"
-
             let depsById = info.Dependencies |> List.map (fun d -> d.Id, d) |> Map.ofList
             let scopesByParent = info.Scopes |> List.groupBy (fun s -> s.ParentScope) |> Map.ofList
             let rec printScope (indent: string) (scope: ScopeDebugInfo) =
@@ -697,7 +670,6 @@ module Debug =
                 printfn "%s  Created: %O" indent (System.DateTimeOffset.FromUnixTimeMilliseconds(scope.CreatedAt))
                 printfn "%s  Dependencies: %d" indent scope.DependencyIds.Count
                 scope.ParentScope |> Option.iter (fun p -> printfn "%s  Parent: %s..." indent (p.ToString().Substring(0, 8)))
-
                 scope.DependencyIds |> Seq.iter (fun depId ->
                     match Map.tryFind depId depsById with
                     | Some dep ->
@@ -708,10 +680,8 @@ module Debug =
                 match Map.tryFind (Some scope.ScopeId) scopesByParent with
                 | Some childScopes -> childScopes |> List.iter (printScope (indent + "  "))
                 | None -> ()
-
             // Print root scopes (no parent)
             match Map.tryFind None scopesByParent with
             | Some rootScopes -> rootScopes |> List.iter (printScope "")
             | None -> ()
-
             printfn "--------------------------------"

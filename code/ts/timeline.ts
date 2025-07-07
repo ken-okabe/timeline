@@ -1,9 +1,15 @@
-// Symbol for internal id property
-const _id = Symbol('id');
-// --- Symbol for the last value
-const _last = Symbol('last');
+/**
+ * @file timeline.ts
+ * @title Type-Safe Functional Reactive Programming Library
+ * @description A lightweight, powerful library for building reactive systems in TypeScript.
+ * It provides type-safe, composable primitives for managing state and side effects over time,
+ * inspired by Functional Reactive Programming (FRP).
+ */
 
 // --- Core System Abstractions ---
+// These are the fundamental type definitions that form the backbone of the dependency
+// tracking system. They define unique identifiers for timelines, dependencies, and scopes.
+// ---
 type TimelineId = string;
 type DependencyId = string;
 type ScopeId = string;
@@ -12,12 +18,16 @@ type DisposeCallback = () => void;
 interface DependencyDetails {
     sourceId: TimelineId;
     targetId: TimelineId;
-    callback: Function;
+    callback: (value: any) => void;
     scopeId: ScopeId | undefined;
     onDispose: DisposeCallback | undefined;
 }
 
-// --- Improvement: Type-safe Resource definition ---
+// --- Type-safe Resource definition ---
+// This interface provides a structured way to handle resources that require cleanup,
+// such as event listeners or network connections. It pairs the resource with its
+// disposal logic, ensuring no leaks occur when the resource is no longer needed.
+// ---
 interface Resource<A> {
     readonly resource: A;
     readonly cleanup: DisposeCallback;
@@ -30,7 +40,11 @@ export const createResource = <A>(resource: A, cleanup: DisposeCallback): Resour
     cleanup
 } as const);
 
-// --- Improvement: Type definitions for debug information ---
+// --- Type definitions for debug information ---
+// When debug mode is enabled, these interfaces provide detailed metadata about
+// scopes and dependencies. This information is crucial for visualizing the
+// dependency graph and diagnosing issues in complex reactive systems.
+// ---
 interface DebugInfo {
     scopeId: ScopeId;
     dependencyIds: DependencyId[];
@@ -47,8 +61,11 @@ interface DependencyDebugInfo {
     createdAt: number;
 }
 
-// --- Improvement: Environment-independent debug mode determination ---
-// Add global declaration for process to avoid TypeScript error in browser context
+// --- Environment-independent debug mode determination ---
+// This logic robustly determines whether to enable debug mode by checking various
+// environment signals, such as Node.js environment variables, browser URL parameters,
+// and localStorage flags. This ensures flexible control during development and testing.
+// ---
 declare var process: any;
 
 const debugMode = (() => {
@@ -99,7 +116,6 @@ const debugMode = (() => {
     return false;
 })();
 
-// Judgment function for use within DependencyCore
 const isDebugEnabled = (): boolean => {
     // Check for temporary enablement
     if (typeof window !== 'undefined' && (window as any).__TIMELINE_DEBUG_TEMP__) {
@@ -108,9 +124,7 @@ const isDebugEnabled = (): boolean => {
     return debugMode;
 };
 
-// Utility functions for more flexible control
 export const DebugControl = {
-    // Dynamically enable/disable debug mode
     enable: () => {
         if (typeof window !== 'undefined') {
             try {
@@ -133,10 +147,8 @@ export const DebugControl = {
         }
     },
 
-    // Check current state
     isEnabled: () => isDebugEnabled(),
 
-    // Temporarily enable during the session (no reload required)
     enableTemporary: () => {
         if (typeof window !== 'undefined') {
             (window as any).__TIMELINE_DEBUG_TEMP__ = true;
@@ -145,15 +157,16 @@ export const DebugControl = {
     }
 };
 
-// -----------------------------------------------------------------------------
-// DependencyCore: Enhanced Debugging Support Version
-// -----------------------------------------------------------------------------
+// --- DependencyCore: The Engine of Reactivity ---
+// This namespace is the heart of the library, managing the entire graph of
+// dependencies. It handles the registration, removal, and notification of all
+// reactive relationships between timelines, forming a robust and efficient core.
+// ---
 namespace DependencyCore {
     const dependencies = new Map<DependencyId, DependencyDetails>();
     const sourceIndex = new Map<TimelineId, DependencyId[]>();
     const scopeIndex = new Map<ScopeId, DependencyId[]>();
 
-    // Debugging related
     const scopeDebugInfo = new Map<ScopeId, DebugInfo>();
     const dependencyDebugInfo = new Map<DependencyId, DependencyDebugInfo>();
 
@@ -205,7 +218,7 @@ namespace DependencyCore {
     export function registerDependency(
         sourceId: TimelineId,
         targetId: TimelineId,
-        callback: Function,
+        callback: (value: any) => void,
         scopeIdOpt: ScopeId | undefined,
         onDisposeOpt: DisposeCallback | undefined
     ): DependencyId {
@@ -284,7 +297,7 @@ namespace DependencyCore {
         }
     }
 
-    export function getCallbacks(sourceId: TimelineId): { depId: DependencyId; callback: Function }[] {
+    export function getCallbacks(sourceId: TimelineId): { depId: DependencyId; callback: (value: any) => void }[] {
         const depIds = sourceIndex.get(sourceId);
         if (!depIds) { return []; }
         return depIds
@@ -292,7 +305,7 @@ namespace DependencyCore {
                 const details = dependencies.get(depId);
                 return details ? { depId, callback: details.callback } : undefined;
             })
-            .filter((item): item is { depId: DependencyId; callback: Function } => item !== undefined);
+            .filter((item): item is { depId: DependencyId; callback: (value: any) => void } => item !== undefined);
     }
 
     export function getDebugInfo(): {
@@ -324,33 +337,76 @@ namespace DependencyCore {
         console.log(`Total Scopes: ${ info.totalScopes } `);
         console.log(`Total Dependencies: ${ info.totalDependencies } `);
 
+        const scopeMap = new Map(info.scopes.map(s => [s.scopeId, s]));
+        const childrenMap = new Map<ScopeId, ScopeId[]>();
+        const rootScopes: ScopeId[] = [];
+
         info.scopes.forEach(scope => {
-            console.group(`Scope: ${ scope.scopeId.substring(0, 8) }...`);
-            console.log(`Created: ${ new Date(scope.createdAt).toISOString() } `);
-            console.log(`Dependencies: ${ scope.dependencyIds.length } `);
-            if (scope.parentScope) {
-                console.log(`Parent: ${ scope.parentScope.substring(0, 8) }...`);
+            if (scope.parentScope && scopeMap.has(scope.parentScope)) {
+                if (!childrenMap.has(scope.parentScope)) {
+                    childrenMap.set(scope.parentScope, []);
+                }
+                childrenMap.get(scope.parentScope)!.push(scope.scopeId);
+            } else {
+                rootScopes.push(scope.scopeId);
             }
+        });
+
+        function printScope(scopeId: ScopeId, indent: string) {
+            const scope = scopeMap.get(scopeId);
+            if (!scope) return;
+
+            const parentInfo = scope.parentScope ? `(Parent: ${scope.parentScope.substring(0, 8)}...)` : '';
+            console.group(`${indent}Scope: ${scope.scopeId.substring(0, 8)}... ${parentInfo}`);
+            console.log(`${indent}  Created: ${new Date(scope.createdAt).toISOString()}`);
+            console.log(`${indent}  Dependencies: ${scope.dependencyIds.length}`);
 
             scope.dependencyIds.forEach(depId => {
                 const dep = info.dependencies.find(d => d.id === depId);
                 if (dep) {
-                    console.log(`  - ${ depId.substring(0, 8) }... (cleanup: ${ dep.hasCleanup })`);
+                    console.log(`${indent}    - ${depId.substring(0, 8)}... (Source: ${dep.sourceId.substring(0,8)}... -> Target: ${dep.targetId.substring(0,8)}... | cleanup: ${dep.hasCleanup})`);
                 }
             });
+
+            if (childrenMap.has(scopeId)) {
+                childrenMap.get(scopeId)!.forEach(childId => {
+                    printScope(childId, indent + '  ');
+                });
+            }
+
             console.groupEnd();
-        });
+        }
+
+        rootScopes.forEach(scopeId => printScope(scopeId, ''));
+
         console.groupEnd();
     }
 }
 
-// -----------------------------------------------------------------------------
-// Core API
-// -----------------------------------------------------------------------------
+// --- Core API: The Building Blocks of Timelines ---
+// This section defines the fundamental operations for creating and manipulating
+// timelines. It includes functions for reading values (`at`), writing values (`define`),
+// and transforming timelines with core operators like `map` and `bind`.
+// ---
 export type Now = symbol;
 export const Now: Now = Symbol("Conceptual time coordinate");
 
+const _id = Symbol('id');
+const _last = Symbol('last');
+
 const isNull = <A>(value: A | null | undefined): value is null | undefined => value === null || value === undefined;
+
+export type TimelineErrorHandler = (error: any, context: {
+    dependencyId?: DependencyId | string;
+    inputValue?: any;
+    context?: string;
+}) => void;
+
+let globalErrorHandler: TimelineErrorHandler | null = null;
+
+export const setErrorHandler = (handler: TimelineErrorHandler | null): void => {
+    globalErrorHandler = handler;
+};
 
 const handleCallbackError = (
     depId: DependencyId | string,
@@ -360,20 +416,42 @@ const handleCallbackError = (
     context: string = 'general'
 ): void => {
     if (context === 'scope_mismatch' || context === 'bind_transition') {
-        console.debug(`Transition info[${ context }]for ${ depId }: ${ ex.message } `);
+        console.debug(`Transition info[${ context }] for ${ depId }: ${ ex.message } `);
         return;
     }
-    console.warn(`Callback error[${ context }]for dependency ${ depId }: ${ ex.message } `, {
-        inputValue: value,
-        callbackType: typeof callback
-    });
+
+    if (globalErrorHandler) {
+        try {
+            globalErrorHandler(ex, { dependencyId: depId, inputValue: value, context });
+        } catch (handlerError) {
+            console.error('The custom timeline error handler itself failed:', handlerError);
+            console.error('Original error was:', ex);
+        }
+    } else {
+        console.warn(`Callback error[${ context }] for dependency ${ depId }: ${ ex.message } `, {
+            inputValue: value,
+            callbackType: typeof callback
+        });
+    }
 };
 
 const at = <A>(_now: Now) => (timeline: Timeline<A>): A => timeline[_last];
 
+const currentlyUpdating = new Set<TimelineId>();
+
 const define = <A>(_now: Now) => (value: A) => (timeline: Timeline<A>): void => {
+    const timelineId = timeline[_id];
+
+    if (isDebugEnabled()) {
+        if (currentlyUpdating.has(timelineId)) {
+            console.warn(`Circular dependency detected: Update loop on Timeline ID: ${timelineId}. Aborting update.`);
+            return;
+        }
+        currentlyUpdating.add(timelineId);
+    }
+
     (timeline as any)[_last] = value;
-    const callbacks = DependencyCore.getCallbacks(timeline[_id]);
+    const callbacks = DependencyCore.getCallbacks(timelineId);
     callbacks.forEach(({ depId, callback }) => {
         try {
             (callback as (val: A) => void)(value);
@@ -381,6 +459,10 @@ const define = <A>(_now: Now) => (value: A) => (timeline: Timeline<A>): void => 
             handleCallbackError(depId, callback, value, ex, 'callback_execution');
         }
     });
+
+    if (isDebugEnabled()) {
+        currentlyUpdating.delete(timelineId);
+    }
 };
 
 const map = <A, B>(f: (valueA: A) => B) => (timelineA: Timeline<A>): Timeline<B> => {
@@ -436,8 +518,9 @@ const bind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline<
     setUpInnerReaction(initialInnerTimeline, currentScopeId);
     const reactionFnAtoB = (valueA: A): void => {
         try {
-            DependencyCore.disposeScope(currentScopeId);
-            currentScopeId = DependencyCore.createScope();
+            const parentScopeId = currentScopeId;
+            DependencyCore.disposeScope(parentScopeId);
+            currentScopeId = DependencyCore.createScope(parentScopeId);
             const newInnerTimeline = monadf(valueA);
             timelineB.define(Now, newInnerTimeline.at(Now));
             setUpInnerReaction(newInnerTimeline, currentScopeId);
@@ -475,8 +558,9 @@ const nBind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline
     setUpInnerReaction(initialInnerTimeline, currentScopeId);
     const reactionFnAtoB = (valueA: A | null): void => {
         try {
-            DependencyCore.disposeScope(currentScopeId);
-            currentScopeId = DependencyCore.createScope();
+            const parentScopeId = currentScopeId;
+            DependencyCore.disposeScope(parentScopeId);
+            currentScopeId = DependencyCore.createScope(parentScopeId);
             let newInnerTimeline: Timeline<B | null>;
             if (isNull(valueA)) {
                 newInnerTimeline = Timeline<B | null>(null);
@@ -529,18 +613,21 @@ const distinctUntilChanged = <A>(sourceTimeline: Timeline<A>): Timeline<A> => {
     return resultTimeline;
 };
 
-// -----------------------------------------------------------------------------
-// Implementation of improved resource management primitives
-// -----------------------------------------------------------------------------
+// --- Resource Management Primitives ---
+// This section implements the `using` operator, a powerful primitive for declarative
+// resource management. It automatically handles the lifecycle of resources in response
+// to changes in a source timeline, ensuring proper acquisition and cleanup.
+// ---
 const using = <A, B>(resourceFactory: ResourceFactory<A, B>) => (sourceTimeline: Timeline<A>): Timeline<B | null> => {
     const resultTimeline = Timeline<B | null>(null);
     let currentScopeId: ScopeId | null = null;
     const reactionFn = (value: A): void => {
         try {
-            if (currentScopeId) {
-                DependencyCore.disposeScope(currentScopeId);
+            const parentScopeId = currentScopeId;
+            if (parentScopeId) {
+                DependencyCore.disposeScope(parentScopeId);
             }
-            currentScopeId = DependencyCore.createScope();
+            currentScopeId = DependencyCore.createScope(parentScopeId ?? undefined);
             const resourceData = resourceFactory(value);
             if (resourceData) {
                 const { resource, cleanup } = resourceData;
@@ -566,9 +653,12 @@ const nUsing = <A, B>(resourceFactory: ResourceFactory<A, B>) => (sourceTimeline
     return using(wrappedFactory)(sourceTimeline);
 };
 
-// -----------------------------------------------------------------------------
-// Timeline Interface & Factory: Integration of Evolution
-// -----------------------------------------------------------------------------
+// --- Timeline Interface & Factory ---
+// This is the public-facing API of the library. The `Timeline` interface defines
+// the available methods on a timeline instance, while the `Timeline` factory
+// function constructs new timelines and intelligently equips them with nullable-aware
+// methods (`nMap`, `nBind`) if they are created with a null initial value.
+// ---
 export interface Timeline<A> {
     readonly [_id]: TimelineId;
     readonly [_last]: A;
@@ -605,8 +695,6 @@ export const Timeline = <A>(initialValue: A): Timeline<A> & (A extends null | un
         using: <B>(resourceFactory: ResourceFactory<A, B>): Timeline<B | null> => using<A, B>(resourceFactory)(timelineInstance as Timeline<A>)
     };
 
-    // ★★★ Correction Point ★★★
-    // Corrected to return NullableTimeline only when initialValue is null or undefined
     if ((initialValue as any) == null) {
         return Object.assign(timelineInstance, baseTimeline, {
             nMap: <B>(f: (value: Exclude<A, null | undefined>) => B): Timeline<B | null> =>
@@ -621,9 +709,10 @@ export const Timeline = <A>(initialValue: A): Timeline<A> & (A extends null | un
     return Object.assign(timelineInstance, baseTimeline) as any;
 };
 
-// -----------------------------------------------------------------------------
-// Exported Utilities
-// -----------------------------------------------------------------------------
+// --- Exported Utilities ---
+// A collection of helper functions and pre-defined timeline constants that
+// simplify common use cases and improve the readability of reactive code.
+// ---
 export const ID = <A>(initialValue: A): Timeline<A> => Timeline(initialValue);
 export const FalseTimeline: Timeline<boolean> = Timeline(false);
 export const TrueTimeline: Timeline<boolean> = Timeline(true);
@@ -638,32 +727,44 @@ export const DebugUtils = {
     printTree: DependencyCore.printDebugTree
 };
 
-// =============================================================================
-// ===== Refreshed Composition Functions Section (Start) =====
-// =============================================================================
+/**
+ * Disposes of the internal dependencies created by composition functions like
+ * `combineLatest`, `listOf`, etc. This should be called when the composed
+ * timeline is no longer needed, to prevent memory leaks.
+ * @param timeline The composed timeline to dispose of.
+ */
+export const dispose = (timeline: Timeline<any>): void => {
+    DependencyCore.disposeScope((timeline as any)[_id]);
+};
 
-// --- Level 1: Basic binary operation container (cannot be used for 3 or more arguments as it's binary) ---
+
+// --- Composition Functions ---
+// This section provides a rich set of functions for combining multiple timelines
+// into a single one. It features a layered design, starting with a basic binary
+// combiner (`combineLatestWith`), building up to generic folding, and culminating
+// in high-level, declarative helpers like `anyOf`, `allOf`, and `sumOf`.
+// ---
 export const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineA: Timeline<A>) => (timelineB: Timeline<B>): Timeline<C> => {
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
     const resultTimeline = Timeline(f(latestA, latestB));
+    const scopeId = (resultTimeline as any)[_id] as ScopeId;
 
     const reactionA = (valA: A): void => {
         latestA = valA;
         resultTimeline.define(Now, f(latestA, latestB));
     };
-    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, undefined, undefined);
+    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, scopeId, undefined);
 
     const reactionB = (valB: B): void => {
         latestB = valB;
         resultTimeline.define(Now, f(latestA, latestB));
     };
-    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, undefined, undefined);
+    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, scopeId, undefined);
 
     return resultTimeline;
 };
 
-// --- (Nullable version) ---
 export const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timelineA: Timeline<A | null>) => (timelineB: Timeline<B | null>): Timeline<C | null> => {
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
@@ -676,23 +777,23 @@ export const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (time
     };
 
     const resultTimeline = Timeline(calculateCombinedValue());
+    const scopeId = (resultTimeline as any)[_id] as ScopeId;
 
     const reactionA = (valA: A | null): void => {
         latestA = valA;
         resultTimeline.define(Now, calculateCombinedValue());
     };
-    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, undefined, undefined);
+    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, scopeId, undefined);
 
     const reactionB = (valB: B | null): void => {
         latestB = valB;
         resultTimeline.define(Now, calculateCombinedValue());
     };
-    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, undefined, undefined);
+    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, scopeId, undefined);
 
     return resultTimeline;
 };
 
-// --- Level 2: Definition of concrete binary operations ---
 const orOf = (timelineA: Timeline<boolean>, timelineB: Timeline<boolean>): Timeline<boolean> =>
     combineLatestWith((a: boolean, b: boolean) => a || b)(timelineA)(timelineB);
 
@@ -711,7 +812,6 @@ const minOf2 = (timelineA: Timeline<number>, timelineB: Timeline<number>): Timel
 const concatOf = (timelineA: Timeline<any[]>, timelineB: Timeline<any>): Timeline<any[]> =>
     combineLatestWith((arrayA: any[], valueB: any) => arrayA.concat(valueB))(timelineA)(timelineB);
 
-// --- Level 3: Generic folding ---
 export const foldTimelines = <A, B>(
     timelines: readonly Timeline<A>[],
     initialTimeline: Timeline<B>,
@@ -721,35 +821,28 @@ export const foldTimelines = <A, B>(
 };
 
 
-// --- Level 4: Implementation of high-level helper functions using fold ---
 export const anyOf = (booleanTimelines: readonly Timeline<boolean>[]): Timeline<boolean> => {
-    // Folding with orOf. Identity element is `false`
     return foldTimelines(booleanTimelines, FalseTimeline, orOf);
 };
 
 export const allOf = (booleanTimelines: readonly Timeline<boolean>[]): Timeline<boolean> => {
-    // Folding with andOf. Identity element is `true`
     return foldTimelines(booleanTimelines, TrueTimeline, andOf);
 };
 
 export const sumOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // Folding with addOf. Identity element is `0`
     return foldTimelines(numberTimelines, Timeline(0), addOf);
 };
 
 export const maxOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // Folding with maxOf2. Identity element is `- Infinity`
     return foldTimelines(numberTimelines, Timeline(-Infinity), maxOf2);
 };
 
 export const minOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // Folding with minOf2. Identity element is `Infinity`
     return foldTimelines(numberTimelines, Timeline(Infinity), minOf2);
 };
 
 export const averageOf = (numberTimelines: readonly Timeline<number>[]): Timeline<number> => {
-    // Average is not a simple fold, so calculate by mapping the sumOf result
-    if (numberTimelines.length === 0) return Timeline(0); // Avoid division by zero
+    if (numberTimelines.length === 0) return Timeline(0);
     return sumOf(numberTimelines).map(sum => sum / numberTimelines.length);
 };
 
@@ -759,11 +852,6 @@ export const listOf = <A>(
     const emptyArrayTimeline = Timeline<A[]>([]);
     return foldTimelines(timelines, emptyArrayTimeline, concatOf) as Timeline<A[]>;
 };
-
-// --- Nullable version of applied functions ---
-
-// Nullable version of binary operators
-// --- Nullable version of binary operators (Revised) ---
 
 const nOrOf = (timelineA: Timeline<boolean | null>, timelineB: Timeline<boolean | null>): Timeline<boolean | null> =>
     nCombineLatestWith((a: boolean, b: boolean) => a || b)(timelineA)(timelineB);
@@ -777,102 +865,96 @@ const nAddOf = (timelineA: Timeline<number | null>, timelineB: Timeline<number |
 const nConcatOf = (timelineA: Timeline<any[] | null>, timelineB: Timeline<any | null>): Timeline<any[] | null> =>
     nCombineLatestWith((arrayA: any[], valueB: any) => arrayA.concat(valueB))(timelineA)(timelineB);
 
-// Nullable version of high-level helper functions
 export const nAnyOf = (booleanTimelines: readonly Timeline<boolean | null>[]): Timeline<boolean | null> => {
-    return foldTimelines(booleanTimelines, FalseTimeline, nOrOf);
+    return foldTimelines(booleanTimelines, Timeline<boolean | null>(false), nOrOf);
 };
 
 export const nAllOf = (booleanTimelines: readonly Timeline<boolean | null>[]): Timeline<boolean | null> => {
-    return foldTimelines(booleanTimelines, TrueTimeline, nAndOf);
+    return foldTimelines(booleanTimelines, Timeline<boolean | null>(true), nAndOf);
 };
 
 export const nSumOf = (numberTimelines: readonly Timeline<number | null>[]): Timeline<number | null> => {
-    return foldTimelines(numberTimelines, Timeline(0), nAddOf);
+    return foldTimelines(numberTimelines, Timeline<number | null>(0), nAddOf);
 };
 
 export const nListOf = (timelines: readonly Timeline<any | null>[]): Timeline<any[] | null> => {
-    const emptyArrayTimeline = Timeline<any[]>([]);
-    return foldTimelines(timelines, emptyArrayTimeline, nConcatOf) as Timeline<any[] | null>;
+    return foldTimelines(timelines, Timeline<any[] | null>([]), nConcatOf) as Timeline<any[] | null>;
 };
 
-// --- Utilities for special cases ---
-// Type helper: Extracts a tuple of value types from an array of Timelines
 type TimelinesToValues<T extends readonly Timeline<any>[]> = {
     -readonly [P in keyof T]: T[P] extends Timeline<infer V> ? V : never
 };
 
 /**
- * A generic utility to combine multiple timelines with a complex N-ary function that cannot be expressed with fold.
- * (e.g., (a, b, c) => (a + b) / c)
- * Generally, it is recommended to use the more declarative `anyOf`, `sumOf`, `listOf`.
+ * A generic utility to combine multiple timelines with an N-ary function.
+ * This is highly performant and should be used for complex combinations that cannot
+ * be expressed with simpler helpers like `anyOf`, `sumOf`, etc.
  */
 export const combineLatest = <T extends readonly Timeline<any>[], R>(
     combinerFn: (...values: TimelinesToValues<T>) => R
 ) => (timelines: T): Timeline<R> => {
-    if (!Array.isArray(timelines) || timelines.length === 0) {
-        // an empty array is a valid input for some use cases, so we should not throw an error
-        // for now, we will return a timeline with an empty array
-        // @ts-ignore
-        return Timeline([] as any) as Timeline<R>;
-    }
-    if (timelines.length === 1) {
-        return timelines[0].map(value => combinerFn(...([value] as TimelinesToValues<T>)));
+    if (!timelines || timelines.length === 0) {
+        throw new Error("combineLatest requires at least one timeline.");
     }
 
-    const arrayTimeline = timelines.reduce(
-        (acc, timeline, index) => {
-            if (index === 0) {
-                return timeline.map(value => [value]);
-            }
-            return combineLatestWith((accArray: any[], newValue: any) => [...accArray, newValue])(acc as Timeline<any[]>)(timeline);
-        },
-        undefined as unknown as Timeline<any[]>
-    );
+    const latestValues = timelines.map(t => t.at(Now)) as TimelinesToValues<T>;
+    const resultTimeline = Timeline(combinerFn(...latestValues));
 
-    return arrayTimeline.map(valueArray => combinerFn(...(valueArray as any)));
+    const scopeId = (resultTimeline as any)[_id] as ScopeId;
+
+    timelines.forEach((timeline, index) => {
+        const reactionFn = (value: any) => {
+            latestValues[index] = value;
+            resultTimeline.define(Now, combinerFn(...latestValues));
+        };
+        DependencyCore.registerDependency(timeline[_id], resultTimeline[_id], reactionFn, scopeId, undefined);
+    });
+
+    return resultTimeline;
 };
+
 
 /**
  * Nullable version of the generic utility to combine multiple timelines.
  * If any of the input timelines contain null, the result will also be null.
  */
-export const nCombineLatest = <T extends readonly Timeline<any | null>[], R>(
+export const nCombineLatest = <T extends readonly (Timeline<any | null>)[], R>(
     combinerFn: (...values: TimelinesToValues<T>) => R
 ) => (timelines: T): Timeline<R | null> => {
-
-    if (!Array.isArray(timelines) || timelines.length === 0) {
-        return Timeline(null);
+    if (!timelines || timelines.length === 0) {
+        return Timeline<R | null>(null);
     }
 
-    // Use reduce to generate a timeline with an array of values, or a timeline with null
-    const arrayTimeline = timelines.reduce(
-        (acc, timeline, index) => {
-            if (index === 0) {
-                // First element: use nMap, if value is null then result is null, otherwise wrap in an array
-                return (timeline as NullableTimeline<any>).nMap(value => [value]);
-            }
-            // Subsequent elements: use nCombineLatestWith to add elements to the array while propagating null
-            // ★★★ Correction Point ★★★
-            return nCombineLatestWith(
-                (accArray: any[], newValue: any) => [...accArray, newValue]
-            )(acc as Timeline<any[] | null>)(timeline);
-        },
-        undefined as unknown as Timeline<any[] | null>
-    );
+    const latestValues = timelines.map(t => t.at(Now)) as TimelinesToValues<T>;
 
-    // Final result: if arrayTimeline has a null value, return null as is, otherwise apply combinerFn
-    return (arrayTimeline as NullableTimeline<any[]>).nMap(
-        valueArray => combinerFn(...(valueArray as any))
-    );
+    const calculateResult = (): R | null => {
+        if (latestValues.some(isNull)) {
+            return null;
+        }
+        return combinerFn(...latestValues);
+    };
+
+    const resultTimeline = Timeline<R | null>(calculateResult());
+    const scopeId = (resultTimeline as any)[_id] as ScopeId;
+
+    timelines.forEach((timeline, index) => {
+        const reactionFn = (value: any | null) => {
+            latestValues[index] = value;
+            resultTimeline.define(Now, calculateResult());
+        };
+        DependencyCore.registerDependency(timeline[_id], resultTimeline[_id], reactionFn, scopeId, undefined);
+    });
+
+    return resultTimeline;
 };
 
-// -----------------------------------------------------------------------------
-// Usage Examples and Tests
-// -----------------------------------------------------------------------------
-
+// --- Usage Examples and Tests ---
+// This section demonstrates how to use the library's features, providing clear
+// examples for both basic and advanced composition functions. It serves as a
+// practical guide and a quick test suite for the core functionality.
+// ---
 const demonstrateUsage = (): void => {
     // --- Setup ---
-    // Prepare basic timelines for testing.
     console.log('=== Setting up initial timelines ===');
     const timeline1: Timeline<number> = Timeline(1);
     const timeline2: Timeline<number> = Timeline(2);
@@ -880,11 +962,10 @@ const demonstrateUsage = (): void => {
     const timeline4: Timeline<number> = Timeline(4);
 
     // --- Demo of fold-based helper functions (Recommended standard method) ---
-    console.log('\n=== fold-based helpers (Recommended) Demo ===');
+    console.log('\n=== Fold-based helpers (Recommended) Demo ===');
     const boolTimelines: readonly Timeline<boolean>[] = [Timeline(true), Timeline(false), Timeline(true)];
     const numberTimelines: readonly Timeline<number>[] = [10, 20, 30].map(Timeline);
 
-    // Check the initial values of each helper function.
     console.log('anyOf([true, false, true]):', anyOf(boolTimelines).at(Now));       // true
     console.log('allOf([true, false, true]):', allOf(boolTimelines).at(Now));       // false
     console.log('sumOf([10, 20, 30]):', sumOf(numberTimelines).at(Now));       // 60
@@ -892,30 +973,20 @@ const demonstrateUsage = (): void => {
     console.log('minOf([10, 20, 30]):', minOf(numberTimelines).at(Now));       // 10
     console.log('averageOf([10, 20, 30]):', averageOf(numberTimelines).at(Now)); // 20
 
-    /**
-     * --- listOf Demo (Combining multiple timelines) ---
-     * `listOf` combines multiple timelines into a single timeline,
-     * providing its values as an array.
-     *
-     * Note: `listOf` assumes that all elements in the array are of the same type.
-    */
+    // --- listOf Demo ---
     const listResult: Timeline<number[]> = listOf([timeline1, timeline2, timeline3]);
     console.log('listOf([t1, t2, t3]) initial:', listResult.at(Now)); // [1, 2, 3]
 
-    // --- combineLatest Demo (for special cases / N-ary operations) ---
+    // --- combineLatest Demo (for complex, N-ary operations) ---
     console.log('\n=== combineLatest (for complex, non-foldable functions) Demo ===');
-    // `combineLatest` is used when combining with complex N-ary functions that cannot be expressed with fold.
     const sumTimeline: Timeline<number> = combineLatest(
         (a: number, b: number, c: number, d: number) => a + b + c + d
     )([timeline1, timeline2, timeline3, timeline4]);
 
-    // Initial sum: 1 + 2 + 3 + 4 = 10
-    console.log('combineLatest sum (initial):', sumTimeline.at(Now));
+    console.log('combineLatest sum (initial):', sumTimeline.at(Now)); // 1 + 2 + 3 + 4 = 10
 
     // --- Reactivity Test ---
     console.log('\n=== Reactivity Test ===');
-    // When timeline1's value is updated, confirm that all timelines dependent on it
-    // (`listResult`, `sumTimeline`) automatically reflect the new value.
     console.log('Updating timeline1 from 1 to 10...');
     timeline1.define(Now, 10);
     console.log('... update complete.');
