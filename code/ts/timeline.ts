@@ -8,20 +8,25 @@
 
 // --- Core System Abstractions ---
 // These are the fundamental type definitions that form the backbone of the dependency
-// tracking system. They define unique identifiers for timelines, dependencies, and scopes.
+// tracking system. They define unique identifiers for timelines, dependencies, and illusions.
 // ---
 type TimelineId = string;
 type DependencyId = string;
-type ScopeId = string;
+type IllusionId = string;
 type DisposeCallback = () => void;
 
 interface DependencyDetails {
     sourceId: TimelineId;
     targetId: TimelineId;
     callback: (value: any) => void;
-    scopeId: ScopeId | undefined;
+    illusionId: IllusionId | undefined;
     onDispose: DisposeCallback | undefined;
 }
+
+// GC後のクリーンアップを実行するレジストリ
+const cleanupRegistry = new FinalizationRegistry((illusionId: IllusionId) => {
+    DependencyCore.disposeIllusion(illusionId);
+});
 
 // --- Type-safe Resource definition ---
 // This interface provides a structured way to handle resources that require cleanup,
@@ -42,21 +47,21 @@ export const createResource = <A>(resource: A, cleanup: DisposeCallback): Resour
 
 // --- Type definitions for debug information ---
 // When debug mode is enabled, these interfaces provide detailed metadata about
-// scopes and dependencies. This information is crucial for visualizing the
+// illusions and dependencies. This information is crucial for visualizing the
 // dependency graph and diagnosing issues in complex reactive systems.
 // ---
 interface DebugInfo {
-    scopeId: ScopeId;
+    illusionId: IllusionId;
     dependencyIds: DependencyId[];
     createdAt: number;
-    parentScope?: ScopeId;
+    parentIllusion?: IllusionId;
 }
 
 interface DependencyDebugInfo {
     id: DependencyId;
     sourceId: TimelineId;
     targetId: TimelineId;
-    scopeId?: ScopeId;
+    illusionId?: IllusionId;
     hasCleanup: boolean;
     createdAt: number;
 }
@@ -164,28 +169,25 @@ export const DebugControl = {
 // ---
 namespace DependencyCore {
     const dependencies = new Map<DependencyId, DependencyDetails>();
-    const sourceIndex = new Map<TimelineId, DependencyId[]>();
-    const scopeIndex = new Map<ScopeId, DependencyId[]>();
+    const sourceIndex = new Map<TimelineId, Set<DependencyId>>();
+    const illusionIndex = new Map<IllusionId, Set<DependencyId>>();
 
-    const scopeDebugInfo = new Map<ScopeId, DebugInfo>();
+    const illusionDebugInfo = new Map<IllusionId, DebugInfo>();
     const dependencyDebugInfo = new Map<DependencyId, DependencyDebugInfo>();
 
-    function addToListDict<K, V>(dict: Map<K, V[]>, key: K, value: V): void {
+    function addToListDict<K, V>(dict: Map<K, Set<V>>, key: K, value: V): void {
         if (dict.has(key)) {
-            dict.get(key)!.push(value);
+            dict.get(key)!.add(value);
         } else {
-            dict.set(key, [value]);
+            dict.set(key, new Set([value]));
         }
     }
 
-    function removeFromListDict<K, V>(dict: Map<K, V[]>, key: K, value: V): void {
-        if (dict.has(key)) {
-            const list = dict.get(key)!;
-            const index = list.indexOf(value);
-            if (index > -1) {
-                list.splice(index, 1);
-            }
-            if (list.length === 0) {
+    function removeFromListDict<K, V>(dict: Map<K, Set<V>>, key: K, value: V): void {
+        const aSet = dict.get(key);
+        if (aSet) {
+            aSet.delete(value);
+            if (aSet.size === 0) {
                 dict.delete(key);
             }
         }
@@ -200,39 +202,39 @@ namespace DependencyCore {
 
     export function generateTimelineId(): TimelineId { return generateUuid(); }
 
-    export function createScope(parentScope?: ScopeId): ScopeId {
-        const scopeId = generateUuid();
+    export function createIllusion(parentIllusion?: IllusionId): IllusionId {
+        const illusionId = generateUuid();
 
         if (isDebugEnabled()) {
-            scopeDebugInfo.set(scopeId, {
-                scopeId,
+            illusionDebugInfo.set(illusionId, {
+                illusionId,
                 dependencyIds: [],
                 createdAt: Date.now(),
-                parentScope
+                parentIllusion
             });
         }
 
-        return scopeId;
+        return illusionId;
     }
 
     export function registerDependency(
         sourceId: TimelineId,
         targetId: TimelineId,
         callback: (value: any) => void,
-        scopeIdOpt: ScopeId | undefined,
+        illusionIdOpt: IllusionId | undefined,
         onDisposeOpt: DisposeCallback | undefined
     ): DependencyId {
         const depId = generateUuid();
-        const details: DependencyDetails = { sourceId, targetId, callback, scopeId: scopeIdOpt, onDispose: onDisposeOpt };
+        const details: DependencyDetails = { sourceId, targetId, callback, illusionId: illusionIdOpt, onDispose: onDisposeOpt };
 
         dependencies.set(depId, details);
         addToListDict(sourceIndex, sourceId, depId);
 
-        if (scopeIdOpt !== undefined) {
-            addToListDict(scopeIndex, scopeIdOpt, depId);
+        if (illusionIdOpt !== undefined) {
+            addToListDict(illusionIndex, illusionIdOpt, depId);
 
             if (isDebugEnabled()) {
-                const debugInfo = scopeDebugInfo.get(scopeIdOpt);
+                const debugInfo = illusionDebugInfo.get(illusionIdOpt);
                 if (debugInfo) {
                     debugInfo.dependencyIds.push(depId);
                 }
@@ -244,7 +246,7 @@ namespace DependencyCore {
                 id: depId,
                 sourceId,
                 targetId,
-                scopeId: scopeIdOpt,
+                illusionId: illusionIdOpt,
                 hasCleanup: !!onDisposeOpt,
                 createdAt: Date.now()
             });
@@ -265,14 +267,14 @@ namespace DependencyCore {
             }
             dependencies.delete(depId);
             removeFromListDict(sourceIndex, details.sourceId, depId);
-            if (details.scopeId !== undefined) {
-                removeFromListDict(scopeIndex, details.scopeId, depId);
+            if (details.illusionId !== undefined) {
+                removeFromListDict(illusionIndex, details.illusionId, depId);
             }
 
             if (isDebugEnabled()) {
                 dependencyDebugInfo.delete(depId);
-                if (details.scopeId) {
-                    const debugInfo = scopeDebugInfo.get(details.scopeId);
+                if (details.illusionId) {
+                    const debugInfo = illusionDebugInfo.get(details.illusionId);
                     if (debugInfo) {
                         const index = debugInfo.dependencyIds.indexOf(depId);
                         if (index > -1) {
@@ -284,23 +286,23 @@ namespace DependencyCore {
         }
     }
 
-    export function disposeScope(scopeId: ScopeId): void {
-        const depIds = scopeIndex.get(scopeId);
+    export function disposeIllusion(illusionId: IllusionId): void {
+        const depIds = illusionIndex.get(illusionId);
         if (depIds) {
             const idsToRemove = [...depIds];
             idsToRemove.forEach(depId => removeDependency(depId));
-            scopeIndex.delete(scopeId);
+            illusionIndex.delete(illusionId);
 
             if (isDebugEnabled()) {
-                scopeDebugInfo.delete(scopeId);
+                illusionDebugInfo.delete(illusionId);
             }
         }
     }
 
     export function getCallbacks(sourceId: TimelineId): { depId: DependencyId; callback: (value: any) => void }[] {
-        const depIds = sourceIndex.get(sourceId);
+        const depIds = sourceIndex.get(sourceId); // depIds is a Set<DependencyId>
         if (!depIds) { return []; }
-        return depIds
+        return Array.from(depIds)
             .map(depId => {
                 const details = dependencies.get(depId);
                 return details ? { depId, callback: details.callback } : undefined;
@@ -309,19 +311,19 @@ namespace DependencyCore {
     }
 
     export function getDebugInfo(): {
-        scopes: DebugInfo[];
+        illusions: DebugInfo[];
         dependencies: DependencyDebugInfo[];
-        totalScopes: number;
+        totalIllusions: number;
         totalDependencies: number;
     } {
         if (!isDebugEnabled()) {
-            return { scopes: [], dependencies: [], totalScopes: 0, totalDependencies: 0 };
+            return { illusions: [], dependencies: [], totalIllusions: 0, totalDependencies: 0 };
         }
 
         return {
-            scopes: Array.from(scopeDebugInfo.values()),
+            illusions: Array.from(illusionDebugInfo.values()),
             dependencies: Array.from(dependencyDebugInfo.values()),
-            totalScopes: scopeDebugInfo.size,
+            totalIllusions: illusionDebugInfo.size,
             totalDependencies: dependencyDebugInfo.size
         };
     }
@@ -334,55 +336,132 @@ namespace DependencyCore {
 
         const info = getDebugInfo();
         console.group('Timeline Dependency Tree');
-        console.log(`Total Scopes: ${ info.totalScopes } `);
+        console.log(`Total Illusions: ${ info.totalIllusions } `);
         console.log(`Total Dependencies: ${ info.totalDependencies } `);
 
-        const scopeMap = new Map(info.scopes.map(s => [s.scopeId, s]));
-        const childrenMap = new Map<ScopeId, ScopeId[]>();
-        const rootScopes: ScopeId[] = [];
+        const illusionMap = new Map(info.illusions.map(s => [s.illusionId, s]));
+        const childrenMap = new Map<IllusionId, IllusionId[]>();
+        const rootIllusions: IllusionId[] = [];
 
-        info.scopes.forEach(scope => {
-            if (scope.parentScope && scopeMap.has(scope.parentScope)) {
-                if (!childrenMap.has(scope.parentScope)) {
-                    childrenMap.set(scope.parentScope, []);
+        info.illusions.forEach(illusion => {
+            if (illusion.parentIllusion && illusionMap.has(illusion.parentIllusion)) {
+                if (!childrenMap.has(illusion.parentIllusion)) {
+                    childrenMap.set(illusion.parentIllusion, []);
                 }
-                childrenMap.get(scope.parentScope)!.push(scope.scopeId);
+                childrenMap.get(illusion.parentIllusion)!.push(illusion.illusionId);
             } else {
-                rootScopes.push(scope.scopeId);
+                rootIllusions.push(illusion.illusionId);
             }
         });
 
-        function printScope(scopeId: ScopeId, indent: string) {
-            const scope = scopeMap.get(scopeId);
-            if (!scope) return;
+        function printIllusion(illusionId: IllusionId, indent: string) {
+            const illusion = illusionMap.get(illusionId);
+            if (!illusion) return;
 
-            const parentInfo = scope.parentScope ? `(Parent: ${scope.parentScope.substring(0, 8)}...)` : '';
-            console.group(`${indent}Scope: ${scope.scopeId.substring(0, 8)}... ${parentInfo}`);
-            console.log(`${indent}  Created: ${new Date(scope.createdAt).toISOString()}`);
-            console.log(`${indent}  Dependencies: ${scope.dependencyIds.length}`);
+            const parentInfo = illusion.parentIllusion ? `(Parent: ${illusion.parentIllusion.substring(0, 8)}...)` : '';
+            console.group(`${indent}Illusion: ${illusion.illusionId.substring(0, 8)}... ${parentInfo}`);
+            console.log(`${indent}  Created: ${new Date(illusion.createdAt).toISOString()}`);
+            console.log(`${indent}  Dependencies: ${illusion.dependencyIds.length}`);
 
-            scope.dependencyIds.forEach(depId => {
+            illusion.dependencyIds.forEach(depId => {
                 const dep = info.dependencies.find(d => d.id === depId);
                 if (dep) {
                     console.log(`${indent}    - ${depId.substring(0, 8)}... (Source: ${dep.sourceId.substring(0,8)}... -> Target: ${dep.targetId.substring(0,8)}... | cleanup: ${dep.hasCleanup})`);
                 }
             });
 
-            if (childrenMap.has(scopeId)) {
-                childrenMap.get(scopeId)!.forEach(childId => {
-                    printScope(childId, indent + '  ');
+            if (childrenMap.has(illusionId)) {
+                childrenMap.get(illusionId)!.forEach(childId => {
+                    printIllusion(childId, indent + '  ');
                 });
             }
 
             console.groupEnd();
         }
 
-        rootScopes.forEach(scopeId => printScope(scopeId, ''));
+        rootIllusions.forEach(illusionId => printIllusion(illusionId, ''));
 
         console.groupEnd();
     }
-}
 
+    /**
+     * Detects all circular references in the dependency graph and returns a list of their paths.
+     * @returns {string[][]} An array of cycle paths, where each path is an array of TimelineIds.
+     */
+    export function findAllCycles(): string[][] {
+        if (!isDebugEnabled()) {
+            console.warn('Debug mode is not enabled. Cannot find cycles.');
+            return [];
+        }
+
+        // 1. Build the dependency graph and list all nodes.
+        const graph = new Map<TimelineId, Set<TimelineId>>();
+        const allNodes = new Set<TimelineId>();
+        for (const details of dependencies.values()) {
+            if (!graph.has(details.sourceId)) {
+                graph.set(details.sourceId, new Set());
+            }
+            graph.get(details.sourceId)!.add(details.targetId);
+            allNodes.add(details.sourceId);
+            allNodes.add(details.targetId);
+        }
+
+        // 2. Prepare for cycle detection.
+        const cycles: string[][] = [];
+        const visited = new Set<TimelineId>();      // Tracks nodes whose exploration is complete.
+        const recursionStack = new Set<TimelineId>(); // Tracks nodes on the current exploration path.
+
+        // 3. Run DFS starting from every node.
+        for (const node of allNodes) {
+            if (!visited.has(node)) {
+                dfsForCycleDetection(node, graph, visited, recursionStack, [], cycles);
+            }
+        }
+
+        return cycles;
+    }
+
+    /**
+     * A Depth-First Search (DFS) helper function for cycle detection.
+     */
+    function dfsForCycleDetection(
+        node: TimelineId,
+        graph: Map<TimelineId, Set<TimelineId>>,
+        visited: Set<TimelineId>,
+        recursionStack: Set<TimelineId>,
+        path: TimelineId[], // The current traversal path (maintains order).
+        cycles: string[][]
+    ): void {
+        // Mark the current node as being visited on the current recursion path and add it to the path.
+        recursionStack.add(node);
+        path.push(node);
+
+        const neighbors = graph.get(node);
+        if (neighbors) {
+            for (const neighbor of neighbors) {
+                // Case 1: If the neighbor is on the current recursion stack, a cycle is detected.
+                if (recursionStack.has(neighbor)) {
+                    // Find the start of the cycle in the path and slice the subarray from that point.
+                    const cycleStartIndex = path.indexOf(neighbor);
+                    const cyclePath = path.slice(cycleStartIndex);
+                    cycles.push(cyclePath); // Add the detected cycle to the results.
+                    continue; // No need to explore this path further.
+                }
+
+                // Case 2: If the neighbor has not been visited yet, explore it recursively.
+                if (!visited.has(neighbor)) {
+                    dfsForCycleDetection(neighbor, graph, visited, recursionStack, path, cycles);
+                }
+            }
+        }
+
+        // Backtrack: The exploration from this node is complete.
+        // Mark as fully visited, and remove from the recursion stack and path.
+        visited.add(node);
+        recursionStack.delete(node);
+        path.pop();
+    }
+}
 // --- Core API: The Building Blocks of Timelines ---
 // This section defines the fundamental operations for creating and manipulating
 // timelines. It includes functions for reading values (`at`), writing values (`define`),
@@ -415,7 +494,7 @@ const handleCallbackError = (
     ex: any,
     context: string = 'general'
 ): void => {
-    if (context === 'scope_mismatch' || context === 'bind_transition') {
+    if (context === 'illusion_mismatch' || context === 'bind_transition') {
         console.debug(`Transition info[${ context }] for ${ depId }: ${ ex.message } `);
         return;
     }
@@ -506,24 +585,24 @@ const nMap = <A, B>(f: (valueA: A) => B) => (timelineA: Timeline<A | null>): Tim
 const bind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline<A>): Timeline<B> => {
     const initialInnerTimeline = monadf(timelineA.at(Now));
     const timelineB = Timeline(initialInnerTimeline.at(Now));
-    let currentScopeId: ScopeId = DependencyCore.createScope();
-    const setUpInnerReaction = (innerTimeline: Timeline<B>, scopeForInner: ScopeId): void => {
+    let currentIllusionId: IllusionId = DependencyCore.createIllusion();
+    const setUpInnerReaction = (innerTimeline: Timeline<B>, illusionForInner: IllusionId): void => {
         const reactionFnInnerToB = (valueInner: B): void => {
-            if (currentScopeId === scopeForInner) {
+            if (currentIllusionId === illusionForInner) {
                 timelineB.define(Now, valueInner);
             }
         };
-        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner, undefined);
+        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, illusionForInner, undefined);
     };
-    setUpInnerReaction(initialInnerTimeline, currentScopeId);
+    setUpInnerReaction(initialInnerTimeline, currentIllusionId);
     const reactionFnAtoB = (valueA: A): void => {
         try {
-            const parentScopeId = currentScopeId;
-            DependencyCore.disposeScope(parentScopeId);
-            currentScopeId = DependencyCore.createScope(parentScopeId);
+            const parentIllusionId = currentIllusionId;
+            DependencyCore.disposeIllusion(parentIllusionId);
+            currentIllusionId = DependencyCore.createIllusion(parentIllusionId);
             const newInnerTimeline = monadf(valueA);
             timelineB.define(Now, newInnerTimeline.at(Now));
-            setUpInnerReaction(newInnerTimeline, currentScopeId);
+            setUpInnerReaction(newInnerTimeline, currentIllusionId);
         } catch (ex: any) {
             handleCallbackError('bind', monadf, valueA, ex, 'bind_transition');
         }
@@ -546,21 +625,21 @@ const nBind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline
         }
     }
     const timelineB = Timeline(initialInnerTimeline.at(Now));
-    let currentScopeId: ScopeId = DependencyCore.createScope();
-    const setUpInnerReaction = (innerTimeline: Timeline<B | null>, scopeForInner: ScopeId): void => {
+    let currentIllusionId: IllusionId = DependencyCore.createIllusion();
+    const setUpInnerReaction = (innerTimeline: Timeline<B | null>, illusionForInner: IllusionId): void => {
         const reactionFnInnerToB = (valueInner: B | null): void => {
-            if (currentScopeId === scopeForInner) {
+            if (currentIllusionId === illusionForInner) {
                 timelineB.define(Now, valueInner);
             }
         };
-        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, scopeForInner, undefined);
+        DependencyCore.registerDependency(innerTimeline[_id], timelineB[_id], reactionFnInnerToB, illusionForInner, undefined);
     };
-    setUpInnerReaction(initialInnerTimeline, currentScopeId);
+    setUpInnerReaction(initialInnerTimeline, currentIllusionId);
     const reactionFnAtoB = (valueA: A | null): void => {
         try {
-            const parentScopeId = currentScopeId;
-            DependencyCore.disposeScope(parentScopeId);
-            currentScopeId = DependencyCore.createScope(parentScopeId);
+            const parentIllusionId = currentIllusionId;
+            DependencyCore.disposeIllusion(parentIllusionId);
+            currentIllusionId = DependencyCore.createIllusion(parentIllusionId);
             let newInnerTimeline: Timeline<B | null>;
             if (isNull(valueA)) {
                 newInnerTimeline = Timeline<B | null>(null);
@@ -568,12 +647,12 @@ const nBind = <A, B>(monadf: (valueA: A) => Timeline<B>) => (timelineA: Timeline
                 newInnerTimeline = monadf(valueA);
             }
             timelineB.define(Now, newInnerTimeline.at(Now));
-            setUpInnerReaction(newInnerTimeline, currentScopeId);
+            setUpInnerReaction(newInnerTimeline, currentIllusionId);
         } catch (ex: any) {
             handleCallbackError('nBind', monadf, valueA, ex, 'nbind_transition');
             const fallbackTimeline = Timeline<B | null>(null);
             timelineB.define(Now, null);
-            setUpInnerReaction(fallbackTimeline, currentScopeId);
+            setUpInnerReaction(fallbackTimeline, currentIllusionId);
         }
     };
     DependencyCore.registerDependency(timelineA[_id], timelineB[_id], reactionFnAtoB, undefined, undefined);
@@ -620,19 +699,19 @@ const distinctUntilChanged = <A>(sourceTimeline: Timeline<A>): Timeline<A> => {
 // ---
 const using = <A, B>(resourceFactory: ResourceFactory<A, B>) => (sourceTimeline: Timeline<A>): Timeline<B | null> => {
     const resultTimeline = Timeline<B | null>(null);
-    let currentScopeId: ScopeId | null = null;
+    let currentIllusionId: IllusionId | null = null;
     const reactionFn = (value: A): void => {
         try {
-            const parentScopeId = currentScopeId;
-            if (parentScopeId) {
-                DependencyCore.disposeScope(parentScopeId);
+            const parentIllusionId = currentIllusionId;
+            if (parentIllusionId) {
+                DependencyCore.disposeIllusion(parentIllusionId);
             }
-            currentScopeId = DependencyCore.createScope(parentScopeId ?? undefined);
+            currentIllusionId = DependencyCore.createIllusion(parentIllusionId ?? undefined);
             const resourceData = resourceFactory(value);
             if (resourceData) {
                 const { resource, cleanup } = resourceData;
                 resultTimeline.define(Now, resource);
-                DependencyCore.registerDependency(sourceTimeline[_id], resultTimeline[_id], () => { }, currentScopeId, cleanup);
+                DependencyCore.registerDependency(sourceTimeline[_id], resultTimeline[_id], () => { }, currentIllusionId, cleanup);
             } else {
                 resultTimeline.define(Now, null);
             }
@@ -724,17 +803,8 @@ export const pipeBind = <A, B, C>(f: (a: A) => Timeline<B>) => (g: (b: B) => Tim
 
 export const DebugUtils = {
     getInfo: DependencyCore.getDebugInfo,
-    printTree: DependencyCore.printDebugTree
-};
-
-/**
- * Disposes of the internal dependencies created by composition functions like
- * `combineLatest`, `listOf`, etc. This should be called when the composed
- * timeline is no longer needed, to prevent memory leaks.
- * @param timeline The composed timeline to dispose of.
- */
-export const dispose = (timeline: Timeline<any>): void => {
-    DependencyCore.disposeScope((timeline as any)[_id]);
+    printTree: DependencyCore.printDebugTree,
+    findAllCycles: DependencyCore.findAllCycles
 };
 
 
@@ -748,19 +818,28 @@ export const combineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (timel
     let latestA = timelineA.at(Now);
     let latestB = timelineB.at(Now);
     const resultTimeline = Timeline(f(latestA, latestB));
-    const scopeId = (resultTimeline as any)[_id] as ScopeId;
+    const illusionId = (resultTimeline as any)[_id] as IllusionId;
+    const weakResultRef = new WeakRef(resultTimeline);
 
     const reactionA = (valA: A): void => {
         latestA = valA;
-        resultTimeline.define(Now, f(latestA, latestB));
+        const strongResult = weakResultRef.deref();
+        if (strongResult) {
+            strongResult.define(Now, f(latestA, latestB));
+        }
     };
-    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, scopeId, undefined);
+    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, illusionId, undefined);
 
     const reactionB = (valB: B): void => {
         latestB = valB;
-        resultTimeline.define(Now, f(latestA, latestB));
+        const strongResult = weakResultRef.deref();
+        if (strongResult) {
+            strongResult.define(Now, f(latestA, latestB));
+        }
     };
-    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, scopeId, undefined);
+    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, illusionId, undefined);
+
+    cleanupRegistry.register(resultTimeline, illusionId);
 
     return resultTimeline;
 };
@@ -777,19 +856,28 @@ export const nCombineLatestWith = <A, B, C>(f: (valA: A, valB: B) => C) => (time
     };
 
     const resultTimeline = Timeline(calculateCombinedValue());
-    const scopeId = (resultTimeline as any)[_id] as ScopeId;
+    const illusionId = (resultTimeline as any)[_id] as IllusionId;
+    const weakResultRef = new WeakRef(resultTimeline);
 
     const reactionA = (valA: A | null): void => {
         latestA = valA;
-        resultTimeline.define(Now, calculateCombinedValue());
+        const strongResult = weakResultRef.deref();
+        if (strongResult) {
+            strongResult.define(Now, calculateCombinedValue());
+        }
     };
-    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, scopeId, undefined);
+    DependencyCore.registerDependency(timelineA[_id], resultTimeline[_id], reactionA, illusionId, undefined);
 
     const reactionB = (valB: B | null): void => {
         latestB = valB;
-        resultTimeline.define(Now, calculateCombinedValue());
+        const strongResult = weakResultRef.deref();
+        if (strongResult) {
+            strongResult.define(Now, calculateCombinedValue());
+        }
     };
-    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, scopeId, undefined);
+    DependencyCore.registerDependency(timelineB[_id], resultTimeline[_id], reactionB, illusionId, undefined);
+
+    cleanupRegistry.register(resultTimeline, illusionId);
 
     return resultTimeline;
 };
@@ -899,16 +987,21 @@ export const combineLatest = <T extends readonly Timeline<any>[], R>(
 
     const latestValues = timelines.map(t => t.at(Now)) as TimelinesToValues<T>;
     const resultTimeline = Timeline(combinerFn(...latestValues));
-
-    const scopeId = (resultTimeline as any)[_id] as ScopeId;
+    const illusionId = (resultTimeline as any)[_id] as IllusionId;
+    const weakResultRef = new WeakRef(resultTimeline);
 
     timelines.forEach((timeline, index) => {
         const reactionFn = (value: any) => {
             latestValues[index] = value;
-            resultTimeline.define(Now, combinerFn(...latestValues));
+            const strongResult = weakResultRef.deref();
+            if (strongResult) {
+                strongResult.define(Now, combinerFn(...latestValues));
+            }
         };
-        DependencyCore.registerDependency(timeline[_id], resultTimeline[_id], reactionFn, scopeId, undefined);
+        DependencyCore.registerDependency(timeline[_id], resultTimeline[_id], reactionFn, illusionId, undefined);
     });
+
+    cleanupRegistry.register(resultTimeline, illusionId);
 
     return resultTimeline;
 };
@@ -935,15 +1028,21 @@ export const nCombineLatest = <T extends readonly (Timeline<any | null>)[], R>(
     };
 
     const resultTimeline = Timeline<R | null>(calculateResult());
-    const scopeId = (resultTimeline as any)[_id] as ScopeId;
+    const illusionId = (resultTimeline as any)[_id] as IllusionId;
+    const weakResultRef = new WeakRef(resultTimeline);
 
     timelines.forEach((timeline, index) => {
         const reactionFn = (value: any | null) => {
             latestValues[index] = value;
-            resultTimeline.define(Now, calculateResult());
+            const strongResult = weakResultRef.deref();
+            if (strongResult) {
+                strongResult.define(Now, calculateResult());
+            }
         };
-        DependencyCore.registerDependency(timeline[_id], resultTimeline[_id], reactionFn, scopeId, undefined);
+        DependencyCore.registerDependency(timeline[_id], resultTimeline[_id], reactionFn, illusionId, undefined);
     });
+
+    cleanupRegistry.register(resultTimeline, illusionId);
 
     return resultTimeline;
 };
