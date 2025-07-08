@@ -23,7 +23,6 @@ interface DependencyDetails {
     onDispose: DisposeCallback | undefined;
 }
 
-// GC後のクリーンアップを実行するレジストリ
 const cleanupRegistry = new FinalizationRegistry((illusionId: IllusionId) => {
     DependencyCore.disposeIllusion(illusionId);
 });
