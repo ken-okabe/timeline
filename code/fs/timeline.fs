@@ -695,25 +695,19 @@ module TL =
     let FalseTimeline : Timeline<bool> = Timeline false
     let TrueTimeline : Timeline<bool> = Timeline true
 
-    let Or =
+    let orOf =
         fun (timelineA: Timeline<bool>) ->
         fun (timelineB: Timeline<bool>) ->
             combineLatestWith (||) timelineA timelineB
 
-    let And =
+    let andOf =
         fun (timelineA: Timeline<bool>) ->
         fun (timelineB: Timeline<bool>) ->
             combineLatestWith (&&) timelineA timelineB
 
-    let any =
-        fun (booleanTimelines: list<Timeline<bool>>) ->
-            List.fold Or FalseTimeline booleanTimelines
+    let concatOf (timelineA: Timeline<'a list>) (timelineB: Timeline<'a>) : Timeline<'a list> =
+        combineLatestWith (fun list item -> list @ [item]) timelineA timelineB
 
-    let all =
-        fun (booleanTimelines: list<Timeline<bool>>) ->
-            List.fold And TrueTimeline booleanTimelines
-
-    // --- Composition Functions Section ---
 
     // --- N-ary Operations ---
     let combineLatest<'a, 'r> =
@@ -752,6 +746,18 @@ module TL =
         fun (initialState: Timeline<'b>) ->
         fun (timelines: list<Timeline<'a>>) ->
             List.fold accumulator initialState timelines
+
+    let anyOf =
+        fun (booleanTimelines: list<Timeline<bool>>) ->
+            foldTimelines orOf FalseTimeline booleanTimelines
+
+    let allOf =
+        fun (booleanTimelines: list<Timeline<bool>>) ->
+            foldTimelines andOf TrueTimeline booleanTimelines
+
+    let listOf (timelines: Timeline<'a> list) : Timeline<'a list> =
+        let emptyListTimeline = Timeline []
+        foldTimelines concatOf emptyListTimeline timelines
 
     // --- Nullable version of applied functions ---
     let nListOf<'a when 'a : null> =
