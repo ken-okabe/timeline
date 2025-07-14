@@ -261,7 +261,7 @@ namespace DependencyCore {
                 try {
                     details.onDispose();
                 } catch (ex: any) {
-                    console.error(`Error during onDispose for dependency ${ depId }: ${ ex.message } `);
+                    console.error(`Error during onDispose for dependency ${depId}: ${ex.message} `);
                 }
             }
             dependencies.delete(depId);
@@ -327,20 +327,24 @@ namespace DependencyCore {
         };
     }
 
+    /**
+     * Outputs the dependency tree to the console, styled like the Linux 'tree' command.
+     * This function is fully backward compatible with the original printDebugTree.
+     */
     export function printDebugTree(): void {
+        // 1. The original debug mode check is maintained for compatibility.
         if (!isDebugEnabled()) {
             console.log('Debug mode is disabled');
             return;
         }
 
-        const info = getDebugInfo();
-        console.group('Timeline Dependency Tree');
-        console.log(`Total Illusions: ${ info.totalIllusions } `);
-        console.log(`Total Dependencies: ${ info.totalDependencies } `);
+        // 2. Get all dependency information (same as original).
+        const info = DependencyCore.getDebugInfo();
 
+        // 3. Parse and build the tree structure.
         const illusionMap = new Map(info.illusions.map(s => [s.illusionId, s]));
         const childrenMap = new Map<IllusionId, IllusionId[]>();
-        const rootIllusions: IllusionId[] = [];
+        const rootIllusions = new Set<IllusionId>(info.illusions.map(i => i.illusionId));
 
         info.illusions.forEach(illusion => {
             if (illusion.parentIllusion && illusionMap.has(illusion.parentIllusion)) {
@@ -348,37 +352,43 @@ namespace DependencyCore {
                     childrenMap.set(illusion.parentIllusion, []);
                 }
                 childrenMap.get(illusion.parentIllusion)!.push(illusion.illusionId);
-            } else {
-                rootIllusions.push(illusion.illusionId);
+                rootIllusions.delete(illusion.illusionId);
             }
         });
 
-        function printIllusion(illusionId: IllusionId, indent: string) {
-            const illusion = illusionMap.get(illusionId);
+        const treeData = { rootIllusions, illusionMap, childrenMap, dependencies: info.dependencies };
+
+        // 4. Logic to recursively draw the tree.
+        const lines: string[] = [];
+        const printRecursive = (illusionId: IllusionId, prefix: string, isLast: boolean) => {
+            const illusion = treeData.illusionMap.get(illusionId);
             if (!illusion) return;
 
-            const parentInfo = illusion.parentIllusion ? `(Parent: ${illusion.parentIllusion.substring(0, 8)}...)` : '';
-            console.group(`${indent}Illusion: ${illusion.illusionId.substring(0, 8)}... ${parentInfo}`);
-            console.log(`${indent}  Created: ${new Date(illusion.createdAt).toISOString()}`);
-            console.log(`${indent}  Dependencies: ${illusion.dependencyIds.length}`);
+            lines.push(`${prefix}${isLast ? '└──' : '├──'} Illusion: ${illusion.illusionId.substring(0, 8)}...`);
 
-            illusion.dependencyIds.forEach(depId => {
-                const dep = info.dependencies.find(d => d.id === depId);
-                if (dep) {
-                    console.log(`${indent}    - ${depId.substring(0, 8)}... (Source: ${dep.sourceId.substring(0,8)}... -> Target: ${dep.targetId.substring(0,8)}... | cleanup: ${dep.hasCleanup})`);
-                }
+            const childPrefix = `${prefix}${isLast ? '    ' : '│   '}`;
+
+            const deps = illusion.dependencyIds.map(id => treeData.dependencies.find(d => d.id === id)).filter(Boolean);
+            const children = treeData.childrenMap.get(illusionId) || [];
+
+            deps.forEach((dep, i) => {
+                const isLastDep = i === deps.length - 1 && children.length === 0;
+                lines.push(`${childPrefix}${isLastDep ? '└──' : '├──'} Dep: ${dep!.id.substring(0, 8)} (src: ${dep!.sourceId.substring(0, 8)} -> tgt: ${dep!.targetId.substring(0, 8)}) ${dep!.hasCleanup ? '🧹' : ''}`);
             });
 
-            if (childrenMap.has(illusionId)) {
-                childrenMap.get(illusionId)!.forEach(childId => {
-                    printIllusion(childId, indent + '  ');
-                });
-            }
+            children.forEach((childId, i) => {
+                printRecursive(childId, childPrefix, i === children.length - 1);
+            });
+        };
 
-            console.groupEnd();
-        }
+        // 5. Format and output the final result to the console.
+        console.group('Timeline Dependency Tree');
+        console.log(`Total Illusions: ${info.totalIllusions}, Total Dependencies: ${info.totalDependencies}`);
 
-        rootIllusions.forEach(illusionId => printIllusion(illusionId, ''));
+        Array.from(treeData.rootIllusions).forEach((id, i) => {
+            printRecursive(id, '', i === treeData.rootIllusions.size - 1);
+        });
+        console.log(lines.join('\n')); // Output the generated string at once
 
         console.groupEnd();
     }
@@ -494,7 +504,7 @@ const handleCallbackError = (
     context: string = 'general'
 ): void => {
     if (context === 'illusion_mismatch' || context === 'bind_transition') {
-        console.debug(`Transition info[${ context }] for ${ depId }: ${ ex.message } `);
+        console.debug(`Transition info[${context}] for ${depId}: ${ex.message} `);
         return;
     }
 
@@ -506,7 +516,7 @@ const handleCallbackError = (
             console.error('Original error was:', ex);
         }
     } else {
-        console.warn(`Callback error[${ context }] for dependency ${ depId }: ${ ex.message } `, {
+        console.warn(`Callback error[${context}] for dependency ${depId}: ${ex.message} `, {
             inputValue: value,
             callbackType: typeof callback
         });

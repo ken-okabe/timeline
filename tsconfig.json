@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+        "outFile": "./code/js/timeline.js",
+        "removeComments": false,
+        "target": "esnext",
+        "module": "amd",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true
+    },
+    "files": [
+        "./code/ts/timeline.ts"
+    ]
+}
